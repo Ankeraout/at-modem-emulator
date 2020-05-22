@@ -28,8 +28,19 @@ enum {
     PPP_LCP_OPTION_ACFC = 8
 };
 
-void lcp_sendFrame(client_t *client, uint8_t code, uint8_t identifier, uint8_t *buffer, size_t bufferSize);
-void lcp_configurationRequestFrameReceived(client_t *client, uint8_t identifier, uint8_t *payloadBuffer, size_t payloadSize);
+typedef struct {
+    uint8_t code;
+    uint8_t identifier;
+    uint16_t length;
+} __attribute__((packed)) lcp_header_t;
+
+typedef struct {
+    uint8_t type;
+    uint8_t length;
+    uint8_t data[];
+} __attribute__((packed)) lcp_option_t;
+
 void lcp_frameReceived(client_t *client, uint8_t *lcpFrameBuffer, size_t lcpFrameSize);
+void lcp_rejectFrame(client_t *client, uint16_t protocol, const uint8_t *buffer, size_t size);
 
 #endif

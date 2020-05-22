@@ -1,6 +1,7 @@
 #ifndef __CLIENT_H__
 #define __CLIENT_H__
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include <arpa/inet.h>
@@ -29,6 +30,7 @@ typedef struct {
     bool accm[256];
     bool pfc;
     bool acfc;
+    uint32_t ipv4;
 } client_t;
 
 int client_init(client_t *client, int fd, const struct sockaddr *socketAddress, socklen_t socketAddressLength);

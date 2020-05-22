@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include <client.h>
+#include <protocols/ipcp.h>
 #include <protocols/lcp.h>
 #include <protocols/ppp.h>
 
@@ -162,32 +163,26 @@ void ppp_frameReceived(client_t *client, uint8_t *pppFrameBuffer, size_t pppFram
         protocol = (protocol << 8) | protocolField[1];
     }
 
-    uint8_t *dataStart = pppFrameBuffer + 4;
+    size_t headerLength = 4;
 
     if(acfc) {
-        dataStart -= 2;
+        headerLength -= 2;
     }
 
     if(compressedProtocolField) {
-        dataStart -= 1;
+        headerLength -= 1;
     }
 
     switch(protocol) {
         case PPP_PROTOCOL_IPCP:
+            ipcp_frameReceived(client, pppFrameBuffer + headerLength, pppFrameSize - headerLength);
             break;
         case PPP_PROTOCOL_LCP:
-            lcp_frameReceived(client, pppFrameBuffer + 4, pppFrameSize - 4);
+            lcp_frameReceived(client, pppFrameBuffer + headerLength, pppFrameSize - headerLength);
             break;
         default:
             printf("Received PPP frame with unknown protocol value %04x\n", protocol);
-
-            {
-                uint8_t bufferEx[pppFrameSize - 2];
-                bufferEx[0] = protocol >> 8;
-                bufferEx[1] = protocol & 0xff;
-                memcpy(bufferEx + 2, pppFrameBuffer, pppFrameSize - 4);
-                lcp_sendFrame(client, PPP_LCP_PROTOCOL_REJECT, client->currentIdentifier++, bufferEx, pppFrameSize - 2);
-            }
+            lcp_rejectFrame(client, protocol, pppFrameBuffer + headerLength, pppFrameSize - headerLength);
             break;
     }
 }

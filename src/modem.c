@@ -9,8 +9,15 @@
 #include <pthread.h>
 
 #include <client.h>
+#include <protocols/ipv4.h>
 
 int main() {
+    // Initialize the IP network
+    if(ipv4_init(0xc0a83200, 0xffffff00)) { // 192.168.50.0/24
+        fprintf(stderr, "IPv4 protocol initialization failed.\n");
+        return EXIT_FAILURE;
+    }
+    
     // Create the socket to the server
     int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 

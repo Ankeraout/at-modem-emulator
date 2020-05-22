@@ -11,6 +11,7 @@
 
 #include <client.h>
 
+#include <protocols/ipv4.h>
 #include <protocols/ppp.h>
 
 #define PPP_MAX_FRAME_SIZE 2048
@@ -63,6 +64,7 @@ void ppp_reset(client_t *client) {
     client->accm[0x7e] = true;
     client->pfc = false;
     client->currentIdentifier = 0;
+    client->acfc = false;
 }
 
 int client_init(client_t *client, int fd, const struct sockaddr *socketAddress, socklen_t socketAddressLength) {
@@ -100,6 +102,17 @@ int client_init(client_t *client, int fd, const struct sockaddr *socketAddress, 
 
     reset(client);
     ppp_reset(client);
+
+    client->ipv4 = ipv4_alloc();
+
+    if(!client->ipv4) {
+        fprintf(stderr, "client_init(): failed to allocate an IP address for the client.\n");
+        return 1;
+    }
+
+    char ipbuffer[16];
+    ipv4_toString(ipbuffer, client->ipv4);
+    printf("client_init(): allocated IP address %s for a new client from %s.\n", ipbuffer, inet_ntoa(((struct sockaddr_in *)socketAddress)->sin_addr));
 
     return 0;
 }
@@ -334,6 +347,8 @@ void *client_thread_main(void *arg) {
             }
         }
     }
+
+    ipv4_free(client->ipv4);
 
     return NULL;
 }

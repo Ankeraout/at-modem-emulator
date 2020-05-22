@@ -28,7 +28,7 @@ void lcp_configurationRequestFrameReceived(client_t *client, uint8_t identifier,
     size_t ackBufferSize = 0;
 
     while(i < payloadSize) {
-        ppp_lcp_option_t *option = (ppp_lcp_option_t *)&payloadBuffer[i];
+        lcp_option_t *option = (lcp_option_t *)&payloadBuffer[i];
 
         printf("Found PPP LCP option number %d\n", option->type);
         int result = PPP_LCP_CONFIGURATION_ACK;
@@ -110,7 +110,7 @@ void lcp_configurationRequestFrameReceived(client_t *client, uint8_t identifier,
 }
 
 void lcp_frameReceived(client_t *client, uint8_t *lcpFrameBuffer, size_t lcpFrameSize) {
-    ppp_lcp_header_t *lcp_header = (ppp_lcp_header_t *)lcpFrameBuffer;
+    lcp_header_t *lcp_header = (lcp_header_t *)lcpFrameBuffer;
 
     switch(lcp_header->code) {
         case PPP_LCP_CONFIGURATION_REQUEST:
@@ -152,4 +152,12 @@ void lcp_frameReceived(client_t *client, uint8_t *lcpFrameBuffer, size_t lcpFram
             printf("Received PPP LCP frame with unknown code value %02x\n", lcp_header->code);
             break;
     }
+}
+
+void lcp_rejectFrame(client_t *client, uint16_t protocol, const uint8_t *buffer, size_t size) {
+    uint8_t bufferEx[size - 2];
+    bufferEx[0] = protocol >> 8;
+    bufferEx[1] = protocol & 0xff;
+    memcpy(bufferEx + 2, buffer, size - 4);
+    lcp_sendFrame(client, PPP_LCP_PROTOCOL_REJECT, client->currentIdentifier++, bufferEx, size - 2);
 }
