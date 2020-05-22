@@ -5,7 +5,7 @@ LDFLAGS=-lpthread
 
 BINDIR=bin
 
-SOURCES=src/modem.c src/client.c src/fcs.c
+SOURCES=src/modem.c src/client.c src/protocols/ppp.c src/protocols/lcp.c
 OBJECTS=$(SOURCES:%.c=%.o)
 EXEC=$(BINDIR)/modem
 

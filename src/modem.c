@@ -9,7 +9,6 @@
 #include <pthread.h>
 
 #include <client.h>
-#include <fcs.h>
 
 int main() {
     // Create the socket to the server
