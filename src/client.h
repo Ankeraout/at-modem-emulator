@@ -1,10 +1,8 @@
 #ifndef __CLIENT_H__
 #define __CLIENT_H__
 
-#include <stdbool.h>
 #include <stdint.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
+
 #include <arpa/inet.h>
 #include <pthread.h>
 
