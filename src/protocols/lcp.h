@@ -28,8 +28,8 @@ enum {
     PPP_LCP_OPTION_ACFC = 8
 };
 
-void ppp_lcpSendFrame(client_t *client, uint8_t code, uint8_t identifier, uint8_t *buffer, size_t bufferSize);
-void ppp_lcp_configurationRequestFrameReceived(client_t *client, uint8_t identifier, uint8_t *payloadBuffer, size_t payloadSize);
-void ppp_lcpFrameReceived(client_t *client, uint8_t *lcpFrameBuffer, size_t lcpFrameSize);
+void lcp_sendFrame(client_t *client, uint8_t code, uint8_t identifier, uint8_t *buffer, size_t bufferSize);
+void lcp_configurationRequestFrameReceived(client_t *client, uint8_t identifier, uint8_t *payloadBuffer, size_t payloadSize);
+void lcp_frameReceived(client_t *client, uint8_t *lcpFrameBuffer, size_t lcpFrameSize);
 
 #endif

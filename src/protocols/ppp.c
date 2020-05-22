@@ -116,7 +116,7 @@ void ppp_sendFrameEx(client_t *client, uint16_t protocol, uint8_t *buffer, size_
 
     index += bufferSize;
 
-    uint16_t fcs = pppfcs16(bufferEx, bufferExSize - 2);
+    uint16_t fcs = ppp_fcs16(bufferEx, bufferExSize - 2);
 
     bufferEx[index++] = fcs & 0xff;
     bufferEx[index++] = fcs >> 8;
@@ -128,13 +128,13 @@ void ppp_sendFrame(client_t *client, uint16_t protocol, uint8_t *buffer, size_t 
     ppp_sendFrameEx(client, protocol, buffer, bufferSize, client->acfc, client->pfc);
 }
 
-void pppFrameReceived(client_t *client, uint8_t *pppFrameBuffer, size_t pppFrameSize) {
+void ppp_frameReceived(client_t *client, uint8_t *pppFrameBuffer, size_t pppFrameSize) {
     ppp_header_t *ppp_header = (ppp_header_t *)pppFrameBuffer;
     bool compressedProtocolField = false;
     bool acfc = false;
     uint8_t *protocolField;
 
-    uint16_t expectedFcs = pppfcs16(pppFrameBuffer, pppFrameSize - 2);
+    uint16_t expectedFcs = ppp_fcs16(pppFrameBuffer, pppFrameSize - 2);
     uint16_t actualFcs = pppFrameBuffer[pppFrameSize - 2] | (pppFrameBuffer[pppFrameSize - 1] << 8);
 
     if(actualFcs != expectedFcs) {
@@ -173,8 +173,10 @@ void pppFrameReceived(client_t *client, uint8_t *pppFrameBuffer, size_t pppFrame
     }
 
     switch(protocol) {
-        case 0xc021:
-            ppp_lcpFrameReceived(client, pppFrameBuffer + 4, pppFrameSize - 4);
+        case PPP_PROTOCOL_IPCP:
+            break;
+        case PPP_PROTOCOL_LCP:
+            lcp_frameReceived(client, pppFrameBuffer + 4, pppFrameSize - 4);
             break;
         default:
             printf("Received PPP frame with unknown protocol value %04x\n", protocol);
@@ -184,14 +186,14 @@ void pppFrameReceived(client_t *client, uint8_t *pppFrameBuffer, size_t pppFrame
                 bufferEx[0] = protocol >> 8;
                 bufferEx[1] = protocol & 0xff;
                 memcpy(bufferEx + 2, pppFrameBuffer, pppFrameSize - 4);
-                ppp_lcpSendFrame(client, PPP_LCP_PROTOCOL_REJECT, client->currentIdentifier++, bufferEx, pppFrameSize - 2);
+                lcp_sendFrame(client, PPP_LCP_PROTOCOL_REJECT, client->currentIdentifier++, bufferEx, pppFrameSize - 2);
             }
             break;
     }
 }
 
 /* FCS implementation from RFC 1662 */
-uint16_t pppfcs16(const uint8_t *buffer, size_t bufferSize) {
+uint16_t ppp_fcs16(const uint8_t *buffer, size_t bufferSize) {
     register uint16_t fcs = 0xffff;
 
     while (bufferSize--)

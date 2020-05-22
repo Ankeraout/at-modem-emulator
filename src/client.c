@@ -314,7 +314,7 @@ void *client_thread_main(void *arg) {
 
                                 printf("7e\n");
 
-                                pppFrameReceived(client, pppFrameBuffer, pppFrameSize);
+                                ppp_frameReceived(client, pppFrameBuffer, pppFrameSize);
                             }
 
                             rejectFrame = false;

@@ -25,10 +25,15 @@ typedef struct {
     uint8_t data[];
 } __attribute__((packed)) ppp_lcp_option_t;
 
+enum {
+    PPP_PROTOCOL_IPCP = 0x8021,
+    PPP_PROTOCOL_LCP = 0xc021
+};
+
 void ppp_sendFrameSerial(client_t *client, uint8_t *buffer, size_t bufferSize);
 void ppp_sendFrameEx(client_t *client, uint16_t protocol, uint8_t *buffer, size_t bufferSize, bool acfc, bool pfc);
 void ppp_sendFrame(client_t *client, uint16_t protocol, uint8_t *buffer, size_t bufferSize);
-void pppFrameReceived(client_t *client, uint8_t *pppFrameBuffer, size_t pppFrameSize);
-uint16_t pppfcs16(const uint8_t *buffer, size_t bufferSize);
+void ppp_frameReceived(client_t *client, uint8_t *pppFrameBuffer, size_t pppFrameSize);
+uint16_t ppp_fcs16(const uint8_t *buffer, size_t bufferSize);
 
 #endif
