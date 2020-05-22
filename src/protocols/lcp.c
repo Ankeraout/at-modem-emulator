@@ -27,13 +27,11 @@ void ppp_lcp_configurationRequestFrameReceived(client_t *client, uint8_t identif
     uint8_t ackBuffer[client->mru];
     size_t ackBufferSize = 0;
 
-    bool sendMagic = false;
-
     while(i < payloadSize) {
         ppp_lcp_option_t *option = (ppp_lcp_option_t *)&payloadBuffer[i];
 
         printf("Found PPP LCP option number %d\n", option->type);
-        int result = 0; // 0 = Ack, 1 = Nak, 2 = Reject
+        int result = PPP_LCP_CONFIGURATION_ACK;
 
         switch(option->type) {
             case PPP_LCP_OPTION_MRU:
@@ -59,7 +57,6 @@ void ppp_lcp_configurationRequestFrameReceived(client_t *client, uint8_t identif
             }
 
             case PPP_LCP_OPTION_MAGIC_NUMBER:
-                sendMagic = true;
                 break;
 
             case PPP_LCP_OPTION_PFC:
@@ -72,20 +69,20 @@ void ppp_lcp_configurationRequestFrameReceived(client_t *client, uint8_t identif
 
             default:
                 printf("Received PPP LCP configuration request frame with unknown type value %02x\n", option->type);
-                result = 2;
+                result = PPP_LCP_CONFIGURATION_REJECT;
                 break;
         }
 
         uint8_t *buffer = NULL;
         size_t *bufferSize = NULL;
         
-        if(result == 0) {
+        if(result == PPP_LCP_CONFIGURATION_ACK) {
             buffer = ackBuffer;
             bufferSize = &ackBufferSize;
-        } else if(result == 1) {
+        } else if(result == PPP_LCP_CONFIGURATION_NAK) {
             buffer = nakBuffer;
             bufferSize = &nakBufferSize;
-        } else if(result == 2) {
+        } else if(result == PPP_LCP_CONFIGURATION_REJECT) {
             buffer = rejectBuffer;
             bufferSize = &rejectBufferSize;
         }
@@ -98,18 +95,17 @@ void ppp_lcp_configurationRequestFrameReceived(client_t *client, uint8_t identif
 
     // Send response
     if(rejectBufferSize > 0) {
-        ppp_lcpSendFrame(client, 4, identifier, rejectBuffer, rejectBufferSize);
-
+        ppp_lcpSendFrame(client, PPP_LCP_CONFIGURATION_REJECT, identifier, rejectBuffer, rejectBufferSize);
         printf("Rejected configuration request\n");
     } else if(nakBufferSize > 0) {
-        ppp_lcpSendFrame(client, 3, identifier, nakBuffer, nakBufferSize);
+        ppp_lcpSendFrame(client, PPP_LCP_CONFIGURATION_NAK, identifier, nakBuffer, nakBufferSize);
         printf("Nack-ed configuration request\n");
     } else if(ackBufferSize > 0) {
-        ppp_lcpSendFrame(client, 2, identifier, ackBuffer, ackBufferSize);
+        ppp_lcpSendFrame(client, PPP_LCP_CONFIGURATION_ACK, identifier, ackBuffer, ackBufferSize);
         printf("Acknowledged configuration request\n");
         
         // Send config request response
-        ppp_lcpSendFrame(client, 1, identifier + 1, (uint8_t *)"\x02\x06\xff\xff\xff\xff\x05\x06\x19\x10\x77\xBE\x07\x02\x08\x02", 16);
+        ppp_lcpSendFrame(client, PPP_LCP_CONFIGURATION_REQUEST, identifier + 1, (uint8_t *)"\x02\x06\xff\xff\xff\xff\x05\x06\x19\x10\x77\xBE\x07\x02\x08\x02", 16);
     }
 }
 
