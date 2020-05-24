@@ -10,6 +10,11 @@
 #include <protocols/lcp.h>
 #include <protocols/ppp.h>
 
+#define PRIMARY_DNS_IP 0xc0a80101
+#define PRIMARY_NBNS_IP 0xc0a80101
+#define SECONDARY_DNS_IP 0xc0a80101
+#define SECONDARY_NBNS_IP 0xc0a80101
+
 // IPCP uses the same format as LCP, therefore the LCP structures will be used.
 
 void ipcp_sendFrame(client_t *client, uint8_t code, uint8_t identifier, const uint8_t *buffer, size_t size) {
@@ -82,7 +87,7 @@ void ipcp_configurationRequestFrameReceived(client_t *client, uint8_t identifier
                 {
                     uint32_t ip = (option->data[0] << 24) | (option->data[1] << 16) | (option->data[2] << 8) | option->data[3];
 
-                    if(ip != ipv4_getLocalIP()) {
+                    if(ip != PRIMARY_DNS_IP) {
                         result = PPP_LCP_CONFIGURATION_NAK;
                         providePrimaryDNS = true;
                     }
@@ -94,7 +99,7 @@ void ipcp_configurationRequestFrameReceived(client_t *client, uint8_t identifier
                 {
                     uint32_t ip = (option->data[0] << 24) | (option->data[1] << 16) | (option->data[2] << 8) | option->data[3];
 
-                    if(ip != ipv4_getLocalIP()) {
+                    if(ip != PRIMARY_NBNS_IP) {
                         result = PPP_LCP_CONFIGURATION_NAK;
                         providePrimaryNBNS = true;
                     }
@@ -106,7 +111,7 @@ void ipcp_configurationRequestFrameReceived(client_t *client, uint8_t identifier
                 {
                     uint32_t ip = (option->data[0] << 24) | (option->data[1] << 16) | (option->data[2] << 8) | option->data[3];
 
-                    if(ip != ipv4_getLocalIP()) {
+                    if(ip != SECONDARY_DNS_IP) {
                         result = PPP_LCP_CONFIGURATION_NAK;
                         provideSecondaryDNS = true;
                     }
@@ -118,7 +123,7 @@ void ipcp_configurationRequestFrameReceived(client_t *client, uint8_t identifier
                 {
                     uint32_t ip = (option->data[0] << 24) | (option->data[1] << 16) | (option->data[2] << 8) | option->data[3];
 
-                    if(ip != ipv4_getLocalIP()) {
+                    if(ip != SECONDARY_NBNS_IP) {
                         result = PPP_LCP_CONFIGURATION_NAK;
                         provideSecondaryNBNS = true;
                     }
@@ -164,22 +169,22 @@ void ipcp_configurationRequestFrameReceived(client_t *client, uint8_t identifier
 
         if(providePrimaryDNS) {
             printf("Remote end asked for primary DNS.\n");
-            ipcp_configurationRequestFrameReceived_replaceIP(IPCP_OPTION_PRIMARY_DNS, ipv4_getLocalIP(), nakBuffer, nakBufferSize);
+            ipcp_configurationRequestFrameReceived_replaceIP(IPCP_OPTION_PRIMARY_DNS, PRIMARY_DNS_IP, nakBuffer, nakBufferSize);
         }
 
         if(providePrimaryNBNS) {
             printf("Remote end asked for primary NBNS.\n");
-            ipcp_configurationRequestFrameReceived_replaceIP(IPCP_OPTION_PRIMARY_NBNS, ipv4_getLocalIP(), nakBuffer, nakBufferSize);
+            ipcp_configurationRequestFrameReceived_replaceIP(IPCP_OPTION_PRIMARY_NBNS, PRIMARY_NBNS_IP, nakBuffer, nakBufferSize);
         }
 
         if(provideSecondaryDNS) {
             printf("Remote end asked for secondary DNS.\n");
-            ipcp_configurationRequestFrameReceived_replaceIP(IPCP_OPTION_SECONDARY_DNS, ipv4_getLocalIP(), nakBuffer, nakBufferSize);
+            ipcp_configurationRequestFrameReceived_replaceIP(IPCP_OPTION_SECONDARY_DNS, SECONDARY_DNS_IP, nakBuffer, nakBufferSize);
         }
 
         if(provideSecondaryNBNS) {
             printf("Remote end asked for secondary NBNS.\n");
-            ipcp_configurationRequestFrameReceived_replaceIP(IPCP_OPTION_SECONDARY_NBNS, ipv4_getLocalIP(), nakBuffer, nakBufferSize);
+            ipcp_configurationRequestFrameReceived_replaceIP(IPCP_OPTION_SECONDARY_NBNS, SECONDARY_NBNS_IP, nakBuffer, nakBufferSize);
         }
 
         ipcp_sendFrame(client, PPP_LCP_CONFIGURATION_NAK, identifier, nakBuffer, nakBufferSize);

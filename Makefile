@@ -5,7 +5,7 @@ LDFLAGS=-lpthread
 
 BINDIR=bin
 
-SOURCES=src/modem.c src/client.c src/protocols/ppp.c src/protocols/lcp.c src/protocols/ipcp.c src/protocols/ipv4.c
+SOURCES=src/modem.c src/client.c src/protocols/ppp.c src/protocols/lcp.c src/protocols/ipcp.c src/protocols/ipv4.c src/libtun/libtun.c
 OBJECTS=$(SOURCES:%.c=%.o)
 EXEC=$(BINDIR)/modem
 

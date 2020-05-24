@@ -19,10 +19,12 @@ typedef struct {
     pthread_t readerThread;
     pthread_mutex_t mutex;
 
+    // AT modem options
     bool echo;
     bool quiet;
     bool verbose;
     client_mode_t mode;
+    int callProgress;
 
     // LCP options
     uint8_t currentIdentifier;

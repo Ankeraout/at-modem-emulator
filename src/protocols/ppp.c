@@ -7,6 +7,7 @@
 
 #include <client.h>
 #include <protocols/ipcp.h>
+#include <protocols/ipv4.h>
 #include <protocols/lcp.h>
 #include <protocols/ppp.h>
 
@@ -47,23 +48,7 @@ static uint16_t fcstab[256] = {
       0x7bc7, 0x6a4e, 0x58d5, 0x495c, 0x3de3, 0x2c6a, 0x1ef1, 0x0f78
    };
 
-void ppp_sendFrameSerial(client_t *client, uint8_t *buffer, size_t bufferSize) {
-    printf("OUTGOING\n7e ");
-
-    for(size_t i = 0; i < bufferSize; i++) {
-        printf("%02x ", buffer[i]);
-
-        if(((i + 1) % 16) == 0) {
-            printf("\n");
-        }
-    }
-
-    if(((bufferSize + 1) % 16) == 0) {
-        printf("\n7e\n");
-    } else {
-        printf("7e\n");
-    }
-
+void ppp_sendFrameSerial(client_t *client, const uint8_t *buffer, size_t bufferSize) {
     uint8_t bufferEx[bufferSize * 2];
     size_t bufferExSize = 0;
     
@@ -85,7 +70,7 @@ void ppp_sendFrameSerial(client_t *client, uint8_t *buffer, size_t bufferSize) {
     write(client->fd, bufferEx, bufferExSize);
 }
 
-void ppp_sendFrameEx(client_t *client, uint16_t protocol, uint8_t *buffer, size_t bufferSize, bool acfc, bool pfc) {
+void ppp_sendFrameEx(client_t *client, uint16_t protocol, const uint8_t *buffer, size_t bufferSize, bool acfc, bool pfc) {
     size_t bufferExSize = bufferSize + 6;
 
     if(acfc) {
@@ -125,13 +110,12 @@ void ppp_sendFrameEx(client_t *client, uint16_t protocol, uint8_t *buffer, size_
     ppp_sendFrameSerial(client, bufferEx, bufferExSize);
 }
 
-void ppp_sendFrame(client_t *client, uint16_t protocol, uint8_t *buffer, size_t bufferSize) {
+void ppp_sendFrame(client_t *client, uint16_t protocol, const uint8_t *buffer, size_t bufferSize) {
     ppp_sendFrameEx(client, protocol, buffer, bufferSize, client->acfc, client->pfc);
 }
 
 void ppp_frameReceived(client_t *client, uint8_t *pppFrameBuffer, size_t pppFrameSize) {
     ppp_header_t *ppp_header = (ppp_header_t *)pppFrameBuffer;
-    bool compressedProtocolField = false;
     bool acfc = false;
     uint8_t *protocolField;
 
@@ -157,23 +141,24 @@ void ppp_frameReceived(client_t *client, uint8_t *pppFrameBuffer, size_t pppFram
 
     pppFrameSize -= 2;
 
+    size_t headerLength = 4;
+
     uint16_t protocol = protocolField[0];
 
     if(!(protocol & 0x01) || !client->pfc) {
         protocol = (protocol << 8) | protocolField[1];
+    } else {
+        headerLength -= 1;
     }
-
-    size_t headerLength = 4;
 
     if(acfc) {
         headerLength -= 2;
     }
 
-    if(compressedProtocolField) {
-        headerLength -= 1;
-    }
-
     switch(protocol) {
+        case PPP_PROTOCOL_IPV4:
+            ipv4_frameReceived(client, pppFrameBuffer + headerLength, pppFrameSize - headerLength);
+            break;
         case PPP_PROTOCOL_IPCP:
             ipcp_frameReceived(client, pppFrameBuffer + headerLength, pppFrameSize - headerLength);
             break;

@@ -47,6 +47,7 @@ void reset(client_t *client) {
     client->echo = true;
     client->quiet = false;
     client->mode = CLIENTMODE_COMMAND;
+    client->callProgress = 0;
 }
 
 void ppp_reset(client_t *client) {
@@ -103,9 +104,7 @@ int client_init(client_t *client, int fd, const struct sockaddr *socketAddress, 
     reset(client);
     ppp_reset(client);
 
-    client->ipv4 = ipv4_alloc();
-
-    if(!client->ipv4) {
+    if(ipv4_alloc(client)) {
         fprintf(stderr, "client_init(): failed to allocate an IP address for the client.\n");
         return 1;
     }
@@ -122,7 +121,11 @@ void sendResult(client_t *client, int resultCode) {
     int size;
 
     if(client->verbose) {
-        size = sprintf(buffer, "\r\n%s\r\n", resultCodesStr[resultCode]);
+        if(resultCode == RESULTCODE_CONNECT && client->callProgress > 0) {
+            size = strcpy(buffer, "\r\nCONNECT 115200\r\n");
+        } else {
+            size = sprintf(buffer, "\r\n%s\r\n", resultCodesStr[resultCode]);
+        }
     } else {
         size = sprintf(buffer, "%d\r", resultCode);
     }
@@ -173,6 +176,17 @@ void executeCommandLine(client_t *client, const char *commandLine) {
 
                     break;
 
+                case 'H': 
+                    {
+                        bool value;
+
+                        if(parseBooleanParameter(commandLine[index], &value)) {
+                            index++;
+                        }
+                    }
+
+                    break;
+
                 case 'Q':
                     if(parseBooleanParameter(commandLine[index++], &client->quiet)) {
                         keepExecuting = false;
@@ -187,6 +201,20 @@ void executeCommandLine(client_t *client, const char *commandLine) {
                         resultOk = false;
                     }
                     
+                    break;
+
+                case 'X':
+                    {
+                        char arg = commandLine[index++];
+
+                        if(arg < '0' || arg > '4') {
+                            resultOk = false;
+                            keepExecuting = false;
+                        }
+
+                        client->callProgress = arg - '0';
+                    }
+
                     break;
 
                 case 'Z':
@@ -228,6 +256,8 @@ void *client_thread_main(void *arg) {
     bool escape = false;
     bool readingFrame = false;
     bool rejectFrame = false;
+
+    int plusCount = 0;
 
     while(true) {
         ssize_t bytesRead = read(client->fd, buffer, READ_BUFFER_SIZE);
@@ -306,27 +336,27 @@ void *client_thread_main(void *arg) {
 
                     escape = false;
                 } else {
+                    if(receivedByte == '+') {
+                        plusCount++;
+
+                        if(plusCount == 3) {
+                            printf("Received 3 '+' characters, returning to command mode.\n");
+                            client->mode = CLIENTMODE_COMMAND;
+                            plusCount = 0;
+
+                            if(readingFrame) {
+                                pppFrameSize -= 3;
+                            }
+                        }
+                    } else {
+                        plusCount = 0;
+                    }
+
                     if(receivedByte == 0x7d) {
                         escape = true;
                     } else if(receivedByte == 0x7e) {
                         if(readingFrame) {
                             if(!rejectFrame) {
-                                printf("INCOMING\n7e ");
-
-                                for(size_t i = 0; i < pppFrameSize; i++) {
-                                    printf("%02x ", pppFrameBuffer[i]);
-
-                                    if(((i + 1) % 16) == 0) {
-                                        printf("\n");
-                                    }
-                                }
-
-                                if(((pppFrameSize + 1) % 16) == 0) {
-                                    printf("\n");
-                                }
-
-                                printf("7e\n");
-
                                 ppp_frameReceived(client, pppFrameBuffer, pppFrameSize);
                             }
 
