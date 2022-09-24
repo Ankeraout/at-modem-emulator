@@ -1,28 +1,24 @@
-#ifndef __PPP_H__
-#define __PPP_H__
+#ifndef __PROTOCOLS_PPP_H_INCLUDED__
+#define __PROTOCOLS_PPP_H_INCLUDED__
 
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#include <client.h>
+#include "client.h"
 
-typedef struct {
-    uint8_t address;
-    uint8_t control;
-    uint8_t protocol[2];
-} __attribute__((packed)) ppp_header_t;
+#define C_PPP_MRU_MAX 1500
+#define C_PPP_MRU_DEFAULT C_PPP_MRU_MAX
+#define C_PPP_OVERHEAD_MAX 10
+#define C_PPP_MAX_FRAME_SIZE (C_PPP_MRU_MAX + C_PPP_OVERHEAD_MAX)
 
-enum {
-    PPP_PROTOCOL_IPV4 = 0x0021,
-    PPP_PROTOCOL_IPCP = 0x8021,
-    PPP_PROTOCOL_LCP = 0xc021
+struct ts_pppContext {
+    uint_fast16_t mru;
 };
 
-void ppp_sendFrameSerial(client_t *client, const uint8_t *buffer, size_t bufferSize);
-void ppp_sendFrameEx(client_t *client, uint16_t protocol, const uint8_t *buffer, size_t bufferSize, bool acfc, bool pfc);
-void ppp_sendFrame(client_t *client, uint16_t protocol, const uint8_t *buffer, size_t bufferSize);
-void ppp_frameReceived(client_t *client, uint8_t *pppFrameBuffer, size_t pppFrameSize);
-uint16_t ppp_fcs16(const uint8_t *buffer, size_t bufferSize);
+struct ts_client;
+
+void pppInit(struct ts_client *p_client);
+void pppReceive(struct ts_client *p_client, uint8_t *p_buffer, size_t p_size);
+void pppSend(struct ts_client *p_client, uint8_t *p_buffer, size_t p_size);
 
 #endif

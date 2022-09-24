@@ -6,123 +6,48 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-
 #include <pthread.h>
 
-#include <libtun/libtun.h>
+#include "client.h"
+#include "server.h"
+#include "tun.h"
 
-#include <client.h>
-#include <protocols/ethernet.h>
-#include <protocols/ipv4.h>
+int main(void) {
+    char l_tunDeviceName[10] = "tun1";
 
-int tunDeviceFd;
+    // Prepare the server socket
+    struct in6_addr l_socketAddress = IN6ADDR_ANY_INIT;
 
-void *tunReaderThreadMain(void *arg) {
+    if(serverInit(&l_socketAddress, 6666) < 0) {
+        fprintf(stderr, "Server initialization failed.\n");
+        return -1;
+    }
+
+    // Prepare the IPv4 protocol
+
+    // Prepare the tun interface
+    //tunOpen(l_tunDeviceName);
+
+    // Accept incoming clients
     while(true) {
-        uint8_t buffer[1504];
-        
-        ssize_t size = read(tunDeviceFd, buffer, 1504);
+        struct in6_addr l_clientAddress;
+        socklen_t l_clientAddressLength = sizeof(struct in6_addr);
 
-        if(size == 0) {
-            break;
-        } else if(size < 0) {
-            perror("read() on tunnel failed");
-            break;
-        }
+        int l_clientSocket = serverAccept(
+            (struct sockaddr *)&l_clientAddress,
+            &l_clientAddressLength
+        );
 
-        uint16_t etherType = ntohs(*(uint16_t *)(buffer + 2));
-
-        if(etherType == ETHERNET_ETHERTYPE_IPV4) {
-            ipv4_tunFrameReceived(buffer + 4, (size_t)(size - 4));
-        }
-
-    }
-
-    return NULL;
-}
-
-int main() {
-    // Create the tunnel
-    char tunDeviceName[50] = "tun0";
-    tunDeviceFd = libtun_open(tunDeviceName);
-
-    if(tunDeviceFd < 0) {
-        perror("libtun_open() failed");
-        return EXIT_FAILURE;
-    }
-
-    char cmdBuffer[250];
-    sprintf(cmdBuffer, "ip addr add 192.168.50.1/24 dev %s", tunDeviceName);
-    system(cmdBuffer);
-    system("ip link set tun0 up");
-
-    // Start the tun reader thread
-    pthread_t tunReaderThread;
-    pthread_attr_t tunReaderThreadAttr;
-
-    // Initialize the IP network
-    if(ipv4_init(0xc0a83200, 0xffffff00, tunDeviceFd)) { // 192.168.50.0/24
-        fprintf(stderr, "IPv4 protocol initialization failed.\n");
-        return EXIT_FAILURE;
-    }
-
-    if(pthread_attr_init(&tunReaderThreadAttr)) {
-        perror("main(): failed to initialize tun reader thread attr");
-        return EXIT_FAILURE;
-    }
-
-    if(pthread_create(&tunReaderThread, &tunReaderThreadAttr, tunReaderThreadMain, NULL)) {
-        perror("main(): failed to create tun reader thread");
-        return EXIT_FAILURE;
-    }
-    
-    // Create the socket to the server
-    int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-
-    if(sock < 0) {
-        perror("Failed to create socket");
-        return EXIT_FAILURE;
-    }
-
-    struct sockaddr_in socketAddress;
-    memset(&socketAddress, 0, sizeof(struct sockaddr_in));
-    socketAddress.sin_addr.s_addr = htonl(INADDR_ANY);
-    socketAddress.sin_family = AF_INET;
-    socketAddress.sin_port = htons(6666);
-
-    if(bind(sock, (const struct sockaddr *)&socketAddress, sizeof(struct sockaddr_in))) {
-        perror("Failed to bind socket");
-        return EXIT_FAILURE;
-    }
-
-    if(listen(sock, 10)) {
-        perror("Failed to listen to the socket.");
-        return EXIT_FAILURE;
-    }
-
-    struct sockaddr clientAddress;
-    socklen_t clientAddressLength;
-
-    while(true) {
-        int clientSocket = accept(sock, &clientAddress, &clientAddressLength);
-        
-        if(clientSocket == -1) {
-            perror("accept() failed");
+        if(l_clientSocket < 0) {
+            fprintf(stderr, "Warning: serverAccept() failed. Exiting...\n");
             break;
         }
 
-        client_t *client = malloc(sizeof(client_t));
-
-        if(!client) {
-            perror("malloc() failed");
-            break;
-        }
-
-        if(client_init(client, clientSocket, &clientAddress, clientAddressLength)) {
-            fprintf(stderr, "client_init() failed.\n");
-            break;
+        // Handle the new client
+        if(clientAccept(l_clientSocket) < 0) {
+            fprintf(stderr, "Warning: failed to accept new client.\n");
         }
     }
 
-    return EXIT_SUCCESS;
+    return 0;
 }

@@ -1,40 +1,34 @@
-#ifndef __CLIENT_H__
-#define __CLIENT_H__
+#ifndef __CLIENT_H_INCLUDED__
+#define __CLIENT_H_INCLUDED__
 
 #include <stdbool.h>
-#include <stdint.h>
 
-#include <arpa/inet.h>
 #include <pthread.h>
 
-typedef enum {
-    CLIENTMODE_COMMAND,
-    CLIENTMODE_DATA
-} client_mode_t;
+#include "protocols/hayes.h"
+#include "protocols/hdlc.h"
+#include "protocols/ppp.h"
+#include "protocols/ipv4.h"
 
-typedef struct {
-    int fd;
-    struct sockaddr socketAddress;
-    socklen_t socketAddressLength;
-    pthread_t readerThread;
+struct ts_client {
+    bool present;
+    int id;
+    int socket;
+    pthread_t thread;
     pthread_mutex_t mutex;
+    struct ts_hayesContext hayesContext;
+    struct ts_hdlcContext hdlcContext;
+    struct ts_pppContext pppContext;
+    struct ts_ipv4Context ipv4Context;
+};
 
-    // AT modem options
-    bool echo;
-    bool quiet;
-    bool verbose;
-    client_mode_t mode;
-    int callProgress;
-
-    // LCP options
-    uint8_t currentIdentifier;
-    uint_least16_t mru;
-    bool accm[256];
-    bool pfc;
-    bool acfc;
-    uint32_t ipv4;
-} client_t;
-
-int client_init(client_t *client, int fd, const struct sockaddr *socketAddress, socklen_t socketAddressLength);
+void clientInit(void);
+int clientAccept(int p_clientSocket);
+void clientWriteString(struct ts_client *p_client, const char *p_s);
+void clientWrite(
+    struct ts_client *p_client,
+    const void *p_buffer,
+    size_t p_size
+);
 
 #endif
