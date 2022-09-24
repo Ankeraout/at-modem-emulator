@@ -6,8 +6,10 @@
 #include <stdint.h>
 
 #include "client.h"
+#include "protocols/ppp.h"
 
-#define C_HDLC_MAX_FRAME_SIZE 1536
+#define C_HDLC_OVERHEAD_MAX 8
+#define C_HDLC_MAX_FRAME_SIZE (C_PPP_MAX_FRAME_SIZE + C_HDLC_OVERHEAD_MAX)
 
 struct ts_hdlcContext {
     uint8_t recvFrameBuffer[C_HDLC_MAX_FRAME_SIZE];

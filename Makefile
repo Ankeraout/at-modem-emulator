@@ -13,7 +13,8 @@ SOURCES= \
 	src/protocols/hayes.c \
 	src/protocols/hdlc.c \
 	src/protocols/ppp.c \
-	src/protocols/ipv4.c
+	src/protocols/ipv4.c \
+	src/protocols/lcp.c
 
 OBJECTS=$(SOURCES:%.c=%.o)
 EXEC=$(BINDIR)/modem

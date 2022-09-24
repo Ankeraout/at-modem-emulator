@@ -407,6 +407,7 @@ static void hayesHandleD(struct ts_client *p_client) {
     p_client->hayesContext.commandResult = E_HAYESCOMMANDRESULT_CONNECT;
     p_client->hayesContext.state = E_HAYESSTATE_DATA;
     p_client->hayesContext.connected = true;
+    hdlcInit(p_client);
 }
 
 static void hayesHandleE(struct ts_client *p_client) {
