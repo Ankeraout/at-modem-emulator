@@ -41,6 +41,7 @@ struct ts_hayesContext {
     bool quiet;
     bool verbose;
     uint8_t regS[13];
+    bool connected;
 };
 
 struct ts_client;
