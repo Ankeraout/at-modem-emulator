@@ -127,6 +127,7 @@ void hdlcInit(struct ts_client *p_client) {
     p_client->hdlcContext.recvEscape = false;
     p_client->hdlcContext.firstFrameSent = false;
     p_client->hdlcContext.acfcEnabled = false;
+    p_client->hdlcContext.accm = 0xffffffff;
 }
 
 void hdlcReceive(struct ts_client *p_client, uint8_t p_byte) {
@@ -229,7 +230,12 @@ static inline void hdlcSendAppendNoFcs(
     struct ts_client *p_client,
     uint8_t p_byte
 ) {
-    if(p_byte < 0x20 || p_byte == 0x7d || p_byte == 0x7e) {
+    bool l_escape =
+        p_byte == 0x7d
+        || p_byte == 0x7e
+        || (p_byte < 0x20 && ((1 << p_byte) & p_client->hdlcContext.accm) != 0);
+
+    if(l_escape) {
         p_client->hdlcContext.sendFrameBuffer[
             p_client->hdlcContext.sendFrameSize++
         ] = 0x7d;

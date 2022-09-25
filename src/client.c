@@ -102,6 +102,9 @@ static void *clientMain(void *p_arg) {
 
     printf("client: Client %d disconnected.\n", l_client->id);
 
+    ipv4Free(l_client->ipv4Context.address);
+    l_client->present = false;
+
     return NULL;
 }
 

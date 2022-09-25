@@ -120,6 +120,10 @@ void hayesReceive(struct ts_client *p_client, uint8_t p_byte) {
                 p_client->hayesContext.state = E_HAYESSTATE_CMD_A;
             }
 
+            if(p_client->hayesContext.echo) {
+                hayesSend(p_client, &p_byte, 1);
+            }
+
             break;
 
         case E_HAYESSTATE_CMD_A:
@@ -131,11 +135,19 @@ void hayesReceive(struct ts_client *p_client, uint8_t p_byte) {
                 p_client->hayesContext.state = E_HAYESSTATE_CMD;
             }
 
+            if(p_client->hayesContext.echo) {
+                hayesSend(p_client, &p_byte, 1);
+            }
+
             break;
 
         case E_HAYESSTATE_CMD_AT:
             if(p_byte == '\r') {
                 if(!p_client->hayesContext.commandReject) {
+                    if(p_client->hayesContext.echo) {
+                        hayesSend(p_client, &p_byte, 1);
+                    }
+
                     hayesProcessCommand(p_client);
 
                     if(p_client->hayesContext.state == E_HAYESSTATE_CMD_AT) {
@@ -149,8 +161,16 @@ void hayesReceive(struct ts_client *p_client, uint8_t p_byte) {
                 p_client->hayesContext.commandBuffer[
                     p_client->hayesContext.commandBufferSize++
                 ] = p_byte;
+
+                if(p_client->hayesContext.echo) {
+                    hayesSend(p_client, &p_byte, 1);
+                }
             } else {
                 p_client->hayesContext.commandReject = true;
+
+                if(p_client->hayesContext.echo) {
+                    hayesSend(p_client, &p_byte, 1);
+                }
             }
 
             break;

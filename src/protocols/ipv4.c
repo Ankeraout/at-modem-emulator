@@ -1,5 +1,6 @@
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "client.h"
@@ -58,9 +59,13 @@ void ipv4Free(uint32_t p_address) {
 }
 
 void ipv4Receive(uint8_t *p_buffer, size_t p_size) {
-
+    // Remove warnings temporarily
+    (void)p_buffer;
+    (void)p_size;
 }
 
 void ipv4Send(uint8_t *p_buffer, size_t p_size) {
-
+    // Remove warnings temporarily
+    (void)p_buffer;
+    (void)p_size;
 }

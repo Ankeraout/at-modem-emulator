@@ -13,7 +13,8 @@
 #include "tun.h"
 
 int main(void) {
-    char l_tunDeviceName[10] = "tun1";
+    // Commented temporarily to remove a warning
+    //char l_tunDeviceName[10] = "tun1";
 
     // Prepare the server socket
     struct in6_addr l_socketAddress = IN6ADDR_ANY_INIT;

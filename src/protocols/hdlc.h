@@ -22,6 +22,7 @@ struct ts_hdlcContext {
     bool fcs32Enabled;
     uint32_t receiveFcs;
     uint32_t sendFcs;
+    uint32_t accm;
 };
 
 struct ts_client;

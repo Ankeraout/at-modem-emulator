@@ -14,6 +14,12 @@ static void lcpHandleConfigureRequest(
     size_t p_size
 );
 
+static void lcpRejectCode(
+    struct ts_client *p_client,
+    const struct ts_lcpPacket *p_lcpPacket,
+    size_t p_size
+);
+
 void lcpReceive(
     struct ts_client *p_client,
     const uint8_t *p_buffer,
@@ -22,10 +28,10 @@ void lcpReceive(
     const struct ts_lcpPacket *l_lcpPacket =
         (const struct ts_lcpPacket *)p_buffer;
 
-    size_t l_optionOffset = 0;
-
     if(l_lcpPacket->header.code == E_LCP_CODE_CONFIGURE_REQUEST) {
         lcpHandleConfigureRequest(p_client, l_lcpPacket, p_size);
+    } else {
+        lcpRejectCode(p_client, l_lcpPacket, p_size);
     }
 }
 
@@ -58,6 +64,11 @@ void lcpRejectProtocol(
         p_buffer,
         l_packetLength - 6
     );
+
+    printf(
+        "lcp: Rejected packet from client #0: Unknown protocol 0x%04x\n",
+        p_protocolNumber
+    );
 }
 
 static void lcpHandleConfigureRequest(
@@ -88,10 +99,8 @@ static void lcpHandleConfigureRequest(
             } else {
                 p_client->pppContext.mru = l_mru;
             }
-        } else if(l_lcpOption->type == E_LCP_TYPE_AUTH_PROTOCOL) {
-            l_reject = true;
-        } else if(l_lcpOption->type == E_LCP_TYPE_QUALITY_PROTOCOL) {
-            l_reject = true;
+        } else if(l_lcpOption->type == E_LCP_TYPE_ACCM) {
+            p_client->hdlcContext.accm = ntohl(*(uint32_t *)l_lcpOption->data);
         } else if(l_lcpOption->type == E_LCP_TYPE_MAGIC_NUMBER) {
             memcpy(p_client->pppContext.magicNumber, l_lcpOption->data, 4);
         } else if(l_lcpOption->type == E_LCP_TYPE_PFC) {
@@ -100,6 +109,12 @@ static void lcpHandleConfigureRequest(
             p_client->hdlcContext.acfcEnabled = true;
         } else {
             l_reject = true;
+
+            printf(
+                "lcp: Unknown option #%d from client #%d\n",
+                l_lcpOption->type,
+                p_client->id
+            );
         }
 
         if(l_nak) {
@@ -161,5 +176,28 @@ static void lcpHandleConfigureRequest(
         C_PPP_PROTOCOLNUMBER_LCP,
         l_responsePacketBuffer,
         ntohs(l_responsePacket->header.length)
+    );
+
+    if(l_responsePacket->header.code == E_LCP_CODE_CONFIGURE_ACK) {
+        printf(
+            "lcp: Client #%d's configuration was acknowledged.\n",
+            p_client->id
+        );
+    } else if(l_responsePacket->header.code == E_LCP_CODE_CONFIGURE_NAK) {
+        printf("lcp: Client #%d's configuration was nacked.\n", p_client->id);
+    } else if(l_responsePacket->header.code == E_LCP_CODE_CONFIGURE_REJECT) {
+        printf("lcp: Client #%d's configuration was rejected.\n", p_client->id);
+    }
+}
+
+static void lcpRejectCode(
+    struct ts_client *p_client,
+    const struct ts_lcpPacket *p_lcpPacket,
+    size_t p_size
+) {
+    printf(
+        "lcp: Rejected unknown code #%d from client #%d\n",
+        p_lcpPacket->header.code,
+        p_client->id
     );
 }

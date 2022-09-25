@@ -22,7 +22,8 @@ enum te_lcpCode {
 
 enum te_lcpType {
     E_LCP_TYPE_MRU = 1,
-    E_LCP_TYPE_AUTH_PROTOCOL = 3,
+    E_LCP_TYPE_ACCM,
+    E_LCP_TYPE_AUTH_PROTOCOL,
     E_LCP_TYPE_QUALITY_PROTOCOL,
     E_LCP_TYPE_MAGIC_NUMBER,
     E_LCP_TYPE_PFC = 7,
