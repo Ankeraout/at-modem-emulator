@@ -9,6 +9,8 @@
 
 void pppInit(struct ts_client *p_client) {
     p_client->pppContext.mru = C_PPP_MRU_DEFAULT;
+
+    memset(p_client->pppContext.magicNumber, 0, 4);
 }
 
 void pppReceive(
@@ -81,6 +83,5 @@ void pppSend(
     // Write data
     memcpy(&l_buffer[l_bufferIndex], p_buffer, p_size);
 
-    // Send frame
     hdlcSend(p_client, l_buffer, p_size + l_bufferIndex);
 }

@@ -190,7 +190,7 @@ void hayesReceive(struct ts_client *p_client, uint8_t p_byte) {
 }
 
 void hayesSend(struct ts_client *p_client, uint8_t *p_buffer, size_t p_size) {
-
+    clientWrite(p_client, p_buffer, p_size);
 }
 
 static void hayesSendCommandResult(

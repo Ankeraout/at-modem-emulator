@@ -1,5 +1,6 @@
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include <pthread.h>
@@ -8,6 +9,7 @@
 
 #include "client.h"
 #include "protocols/hayes.h"
+#include "protocols/ipv4.h"
 #include "protocols/ppp.h"
 
 #define C_CLIENT_TABLE_SIZE 64
@@ -30,6 +32,7 @@ int clientAccept(int p_clientSocket) {
         if(!s_clientTable[l_id].present) {
             l_clientId = l_id;
             l_foundId = true;
+            break;
         }
     }
 
@@ -45,10 +48,6 @@ int clientAccept(int p_clientSocket) {
     if(pthread_mutex_init(&s_clientTable[l_clientId].mutex, NULL) != 0) {
         return -1;
     }
-
-    // Initialize client protocols
-    hayesInit(&s_clientTable[l_clientId]);
-    pppInit(&s_clientTable[l_clientId]);
 
     if(
         pthread_create(
@@ -67,6 +66,19 @@ int clientAccept(int p_clientSocket) {
 static void *clientMain(void *p_arg) {
     struct ts_client *l_client = (struct ts_client *)p_arg;
     uint8_t l_readBuffer[C_READ_BUFFER_SIZE];
+
+    // Initialize client protocols
+    hayesInit(l_client);
+    pppInit(l_client);
+    ipv4InitClient(l_client);
+
+    printf("client: Client %d connected.\n", l_client->id);
+
+    char l_ipAddressBuffer[16];
+
+    ipv4ToString(l_ipAddressBuffer, l_client->ipv4Context.address);
+
+    printf("client: Client %d has IP address %s\n", l_client->id, l_ipAddressBuffer);
 
     while(true) {
         ssize_t l_bytesRead = read(
@@ -87,6 +99,8 @@ static void *clientMain(void *p_arg) {
             break;
         }
     }
+
+    printf("client: Client %d disconnected.\n", l_client->id);
 
     return NULL;
 }

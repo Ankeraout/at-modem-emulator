@@ -7,6 +7,7 @@
 
 #include "client.h"
 
+#define C_PPP_MRU_MIN 1500
 #define C_PPP_MRU_MAX 1500
 #define C_PPP_MRU_DEFAULT C_PPP_MRU_MAX
 #define C_PPP_OVERHEAD_MAX 2
@@ -25,6 +26,7 @@ enum te_pppLinkState {
 struct ts_pppContext {
     uint_fast16_t mru;
     bool pfcEnabled;
+    uint8_t magicNumber[4];
 };
 
 struct ts_client;
