@@ -14,7 +14,8 @@ SOURCES= \
 	src/protocols/hdlc.c \
 	src/protocols/ppp.c \
 	src/protocols/ipv4.c \
-	src/protocols/lcp.c
+	src/protocols/lcp.c \
+	src/protocols/ipcp.c
 
 OBJECTS=$(SOURCES:%.c=%.o)
 EXEC=$(BINDIR)/modem

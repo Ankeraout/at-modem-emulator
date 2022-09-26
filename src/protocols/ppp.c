@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "client.h"
+#include "protocols/ipcp.h"
 #include "protocols/lcp.h"
 #include "protocols/ppp.h"
 
@@ -29,8 +30,17 @@ void pppReceive(
 
     // Handle packet
     switch(l_protocolNumber) {
-        case 0xc021:
+        case C_PPP_PROTOCOLNUMBER_LCP:
             lcpReceive(
+                p_client,
+                &p_buffer[l_dataOffset],
+                p_size - l_dataOffset
+            );
+
+            break;
+
+        case C_PPP_PROTOCOLNUMBER_IPCP:
+            ipcpReceive(
                 p_client,
                 &p_buffer[l_dataOffset],
                 p_size - l_dataOffset
