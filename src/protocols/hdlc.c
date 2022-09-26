@@ -175,6 +175,13 @@ void hdlcSend(
 ) {
     p_client->hdlcContext.sendFrameSize = 0;
 
+    // Reset FCS
+    if(p_client->hdlcContext.fcs32Enabled) {
+        p_client->hdlcContext.sendFcs = C_PPP_FCS32_INIT;
+    } else {
+        p_client->hdlcContext.sendFcs = C_PPP_FCS16_INIT;
+    }
+
     // Start with a flag
     if(!p_client->hdlcContext.firstFrameSent) {
         p_client->hdlcContext.firstFrameSent = true;
@@ -249,15 +256,17 @@ static inline void hdlcSendAppendNoFcs(
 }
 
 static inline void hdlcSendAppendFcs(struct ts_client *p_client) {
-    hdlcSendAppend(p_client, p_client->hdlcContext.sendFcs);
-    p_client->hdlcContext.sendFcs >>= 8;
-    hdlcSendAppend(p_client, p_client->hdlcContext.sendFcs);
+    uint32_t l_fcs = ~p_client->hdlcContext.sendFcs;
+
+    hdlcSendAppend(p_client, l_fcs);
+    l_fcs >>= 8;
+    hdlcSendAppend(p_client, l_fcs);
 
     if(p_client->hdlcContext.fcs32Enabled) {
-        p_client->hdlcContext.sendFcs >>= 8;
-        hdlcSendAppend(p_client, p_client->hdlcContext.sendFcs);
-        p_client->hdlcContext.sendFcs >>= 8;
-        hdlcSendAppend(p_client, p_client->hdlcContext.sendFcs);
+        l_fcs >>= 8;
+        hdlcSendAppend(p_client, l_fcs);
+        l_fcs >>= 8;
+        hdlcSendAppend(p_client, l_fcs);
     }
 }
 
@@ -298,32 +307,18 @@ static void hdlcReceiveFrame(struct ts_client *p_client) {
         p_client->hdlcContext.recvFrameSize - l_hdlcOverhead;
 
     if(p_client->hdlcContext.fcs32Enabled) {
-        l_actualFcs =
-            p_client->hdlcContext.recvFrameBuffer[
-                p_client->hdlcContext.recvFrameSize - 5
-            ]
-            | (p_client->hdlcContext.recvFrameBuffer[
-                p_client->hdlcContext.recvFrameSize - 4
-            ] << 8)
-            | (p_client->hdlcContext.recvFrameBuffer[
-                p_client->hdlcContext.recvFrameSize - 3
-            ] << 16)
-            | (p_client->hdlcContext.recvFrameBuffer[
-                p_client->hdlcContext.recvFrameSize - 2
-            ] << 24);
+        l_actualFcs = *(uint32_t *)&p_client->hdlcContext.recvFrameBuffer[
+            p_client->hdlcContext.recvFrameSize - 5
+        ];
 
         l_computedFcs = hdlcComputeFcs32(
             &p_client->hdlcContext.recvFrameBuffer[1],
             p_client->hdlcContext.recvFrameSize - 6
         );
     } else {
-        l_actualFcs =
-            p_client->hdlcContext.recvFrameBuffer[
-                p_client->hdlcContext.recvFrameSize - 3
-            ]
-            | (p_client->hdlcContext.recvFrameBuffer[
-                p_client->hdlcContext.recvFrameSize - 2
-            ] << 8);
+        l_actualFcs = *(uint16_t *)&p_client->hdlcContext.recvFrameBuffer[
+            p_client->hdlcContext.recvFrameSize - 3
+        ];
 
         l_computedFcs = hdlcComputeFcs16(
             &p_client->hdlcContext.recvFrameBuffer[1],
