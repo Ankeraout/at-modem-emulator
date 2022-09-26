@@ -13,7 +13,11 @@ static void lcpHandleConfigureRequest(
     const struct ts_lcpPacket *p_lcpPacket,
     size_t p_size
 );
-
+static void lcpHandleTerminateRequest(
+    struct ts_client *p_client,
+    const struct ts_lcpPacket *p_lcpPacket,
+    size_t p_size
+);
 static void lcpRejectCode(
     struct ts_client *p_client,
     const struct ts_lcpPacket *p_lcpPacket,
@@ -30,6 +34,14 @@ void lcpReceive(
 
     if(l_lcpPacket->header.code == E_LCP_CODE_CONFIGURE_REQUEST) {
         lcpHandleConfigureRequest(p_client, l_lcpPacket, p_size);
+    } else if(l_lcpPacket->header.code == E_LCP_CODE_CONFIGURE_ACK) {
+        printf("lcp: Client #%d acknowledged configuration.\n", p_client->id);
+    } else if(l_lcpPacket->header.code == E_LCP_CODE_CONFIGURE_NAK) {
+        printf("lcp: Client #%d nacked configuration.\n", p_client->id);
+    } else if(l_lcpPacket->header.code == E_LCP_CODE_CONFIGURE_REJECT) {
+        printf("lcp: Client #%d rejected configuration.\n", p_client->id);
+    } else if(l_lcpPacket->header.code == E_LCP_CODE_TERMINATE_REQUEST) {
+        lcpHandleTerminateRequest(p_client, l_lcpPacket, p_size);
     } else {
         lcpRejectCode(p_client, l_lcpPacket, p_size);
     }
@@ -54,15 +66,15 @@ void lcpRejectProtocol(
     l_lcpPacket->header.code = E_LCP_CODE_PROTOCOL_REJECT;
     l_lcpPacket->header.identifier = 0;
     l_lcpPacket->header.length = l_packetLength;
-    l_lcpPacket->protocolNumber = p_protocolNumber;
+    l_lcpPacket->protocolNumber = htons(p_protocolNumber);
 
     memcpy(l_lcpPacket->data, p_buffer, l_packetLength - 6);
 
     pppSend(
         p_client,
         C_PPP_PROTOCOLNUMBER_LCP,
-        p_buffer,
-        l_packetLength - 6
+        l_buffer,
+        l_packetLength
     );
 
     printf(
@@ -179,8 +191,48 @@ static void lcpHandleConfigureRequest(
     );
 
     if(l_responsePacket->header.code == E_LCP_CODE_CONFIGURE_ACK) {
+        uint8_t l_lcpPacketBuffer[18];
+        struct ts_lcpPacket *l_lcpPacket =
+            (struct ts_lcpPacket *)l_lcpPacketBuffer;
+
+        l_lcpPacket->header.code = E_LCP_CODE_CONFIGURE_REQUEST;
+        l_lcpPacket->header.identifier = 0;
+        l_lcpPacket->header.length = htons(sizeof(l_lcpPacketBuffer));
+
+        struct ts_lcpOption *l_lcpOption =
+            (struct ts_lcpOption *)l_lcpPacket->data;
+        l_lcpOption->type = E_LCP_TYPE_MRU;
+        l_lcpOption->length = 4;
+        *(uint16_t *)l_lcpOption->data = htons(p_client->pppContext.mru);
+
+        l_lcpOption = (struct ts_lcpOption *)&l_lcpPacket->data[4];
+        l_lcpOption->type = E_LCP_TYPE_ACCM;
+        l_lcpOption->length = 6;
+        *(uint32_t *)l_lcpOption->data = 0x00000000;
+
+        l_lcpOption = (struct ts_lcpOption *)&l_lcpPacket->data[10];
+        l_lcpOption->type = E_LCP_TYPE_PFC;
+        l_lcpOption->length = 2;
+
+        l_lcpOption = (struct ts_lcpOption *)&l_lcpPacket->data[12];
+        l_lcpOption->type = E_LCP_TYPE_ACFC;
+        l_lcpOption->length = 2;
+
+        // Send configure-request
+        pppSend(
+            p_client,
+            C_PPP_PROTOCOLNUMBER_LCP,
+            l_lcpPacketBuffer,
+            sizeof(l_lcpPacketBuffer)
+        );
+
         printf(
             "lcp: Client #%d's configuration was acknowledged.\n",
+            p_client->id
+        );
+
+        printf(
+            "lcp: Sent Configure-Request to client #%d.\n",
             p_client->id
         );
     } else if(l_responsePacket->header.code == E_LCP_CODE_CONFIGURE_NAK) {
@@ -190,11 +242,39 @@ static void lcpHandleConfigureRequest(
     }
 }
 
+static void lcpHandleTerminateRequest(
+    struct ts_client *p_client,
+    const struct ts_lcpPacket *p_lcpPacket,
+    size_t p_size
+) {
+    uint8_t l_buffer[p_size];
+
+    struct ts_lcpPacket *l_lcpPacket = (struct ts_lcpPacket *)l_buffer;
+
+    l_lcpPacket->header.code = E_LCP_CODE_TERMINATE_ACK;
+    l_lcpPacket->header.identifier = p_lcpPacket->header.identifier;
+    l_lcpPacket->header.length = p_lcpPacket->header.length;
+
+    memcpy(l_lcpPacket->data, p_lcpPacket->data, p_size - 4);
+
+    pppSend(
+        p_client,
+        C_PPP_PROTOCOLNUMBER_LCP,
+        l_lcpPacket,
+        p_size
+    );
+
+    printf("lcp: Client #%d asked for link termination.\n", p_client->id);
+}
+
 static void lcpRejectCode(
     struct ts_client *p_client,
     const struct ts_lcpPacket *p_lcpPacket,
     size_t p_size
 ) {
+    // Remove warning
+    (void)p_size;
+
     printf(
         "lcp: Rejected unknown code #%d from client #%d\n",
         p_lcpPacket->header.code,

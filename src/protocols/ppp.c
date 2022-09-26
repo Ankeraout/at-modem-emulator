@@ -53,7 +53,7 @@ void pppReceive(
 void pppSend(
     struct ts_client *p_client,
     uint16_t p_protocolNumber,
-    const uint8_t *p_buffer,
+    const void *p_buffer,
     size_t p_size
 ) {
     uint8_t l_buffer[C_PPP_MAX_FRAME_SIZE];
