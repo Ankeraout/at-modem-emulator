@@ -9,6 +9,11 @@
 #include "protocols/lcp.h"
 #include "protocols/ppp.h"
 
+#define C_IPCP_DNS1_ADDRESS 0x09090909
+#define C_IPCP_DNS2_ADDRESS 0x8e707070
+#define C_IPCP_NBNS1_ADDRESS 0x00000000
+#define C_IPCP_NBNS2_ADDRESS 0x00000000
+
 static void ipcpHandleConfigureRequest(
     struct ts_client *p_client,
     const struct ts_lcpPacket *p_ipcpPacket,
@@ -71,6 +76,50 @@ static void ipcpHandleConfigureRequest(
                 l_nackOption->length = 6;
                 *(uint32_t *)l_nackOption->data =
                     htonl(p_client->ipv4Context.address);
+
+                l_ipcpOption = l_nackOption;
+                l_nak = true;
+            }
+        } else if(l_ipcpOption->type == E_IPCP_TYPE_DNS1) {
+            uint32_t l_ipAddress = ntohl(*(uint32_t *)l_ipcpOption->data);
+
+            if(l_ipAddress != C_IPCP_DNS1_ADDRESS) {
+                l_nackOption->type = E_IPCP_TYPE_DNS1;
+                l_nackOption->length = 6;
+                *(uint32_t *)l_nackOption->data = htonl(C_IPCP_DNS1_ADDRESS);
+
+                l_ipcpOption = l_nackOption;
+                l_nak = true;
+            }
+        } else if(l_ipcpOption->type == E_IPCP_TYPE_NBNS1) {
+            uint32_t l_ipAddress = ntohl(*(uint32_t *)l_ipcpOption->data);
+
+            if(l_ipAddress != C_IPCP_NBNS1_ADDRESS) {
+                l_nackOption->type = E_IPCP_TYPE_NBNS1;
+                l_nackOption->length = 6;
+                *(uint32_t *)l_nackOption->data = htonl(C_IPCP_NBNS1_ADDRESS);
+
+                l_ipcpOption = l_nackOption;
+                l_nak = true;
+            }
+        } else if(l_ipcpOption->type == E_IPCP_TYPE_DNS2) {
+            uint32_t l_ipAddress = ntohl(*(uint32_t *)l_ipcpOption->data);
+
+            if(l_ipAddress != C_IPCP_DNS2_ADDRESS) {
+                l_nackOption->type = E_IPCP_TYPE_DNS2;
+                l_nackOption->length = 6;
+                *(uint32_t *)l_nackOption->data = htonl(C_IPCP_DNS2_ADDRESS);
+
+                l_ipcpOption = l_nackOption;
+                l_nak = true;
+            }
+        } else if(l_ipcpOption->type == E_IPCP_TYPE_NBNS2) {
+            uint32_t l_ipAddress = ntohl(*(uint32_t *)l_ipcpOption->data);
+
+            if(l_ipAddress != C_IPCP_NBNS2_ADDRESS) {
+                l_nackOption->type = E_IPCP_TYPE_NBNS2;
+                l_nackOption->length = 6;
+                *(uint32_t *)l_nackOption->data = htonl(C_IPCP_NBNS2_ADDRESS);
 
                 l_ipcpOption = l_nackOption;
                 l_nak = true;
