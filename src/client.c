@@ -94,9 +94,7 @@ static void *clientMain(void *p_arg) {
 
     printf("client: Client %d disconnected.\n", l_client->id);
 
-    if(l_client->ipv4Context.address != 0) {
-        ipv4Free(l_client->ipv4Context.address);
-    }
+    ipv4Free(l_client);
 
     l_client->present = false;
 

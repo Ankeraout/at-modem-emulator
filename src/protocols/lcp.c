@@ -266,10 +266,7 @@ static void lcpHandleTerminateRequest(
 
     printf("lcp: Client #%d asked for link termination.\n", p_client->id);
 
-    if(p_client->ipv4Context.address != 0) {
-        ipv4Free(p_client->ipv4Context.address);
-        p_client->ipv4Context.address = 0;
-    }
+    ipv4Free(p_client);
 }
 
 static void lcpRejectCode(
