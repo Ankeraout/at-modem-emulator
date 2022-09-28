@@ -18,7 +18,7 @@ void ipv4Init(void) {
 }
 
 void ipv4InitClient(struct ts_client *p_client) {
-    p_client->ipv4Context.address = ipv4Allocate();
+    p_client->ipv4Context.address = 0;
 }
 
 void ipv4ToString(char *p_buffer, uint32_t p_address) {

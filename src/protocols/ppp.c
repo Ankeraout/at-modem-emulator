@@ -11,6 +11,8 @@
 void pppInit(struct ts_client *p_client) {
     p_client->pppContext.mru = C_PPP_MRU_DEFAULT;
     memset(p_client->pppContext.magicNumber, 0, 4);
+
+    ipv4InitClient(p_client);
 }
 
 void pppReceive(

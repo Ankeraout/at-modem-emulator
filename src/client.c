@@ -69,16 +69,8 @@ static void *clientMain(void *p_arg) {
 
     // Initialize client protocols
     hayesInit(l_client);
-    pppInit(l_client);
-    ipv4InitClient(l_client);
 
     printf("client: Client %d connected.\n", l_client->id);
-
-    char l_ipAddressBuffer[16];
-
-    ipv4ToString(l_ipAddressBuffer, l_client->ipv4Context.address);
-
-    printf("client: Client %d has IP address %s\n", l_client->id, l_ipAddressBuffer);
 
     while(true) {
         ssize_t l_bytesRead = read(
@@ -102,7 +94,10 @@ static void *clientMain(void *p_arg) {
 
     printf("client: Client %d disconnected.\n", l_client->id);
 
-    ipv4Free(l_client->ipv4Context.address);
+    if(l_client->ipv4Context.address != 0) {
+        ipv4Free(l_client->ipv4Context.address);
+    }
+
     l_client->present = false;
 
     return NULL;

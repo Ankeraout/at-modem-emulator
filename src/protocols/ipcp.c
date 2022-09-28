@@ -71,6 +71,20 @@ static void ipcpHandleConfigureRequest(
         if(l_ipcpOption->type == E_IPCP_TYPE_IP_ADDRESS) {
             uint32_t l_ipAddress = ntohl(*(uint32_t *)l_ipcpOption->data);
 
+            if(p_client->ipv4Context.address == 0) {
+                p_client->ipv4Context.address = ipv4Allocate();
+
+                char l_buffer[16];
+
+                ipv4ToString(l_buffer, p_client->ipv4Context.address);
+
+                printf(
+                    "ipcp: Allocated IPv4 %s for client #%d.\n",
+                    l_buffer,
+                    p_client->id
+                );
+            }
+
             if(l_ipAddress != p_client->ipv4Context.address) {
                 l_nackOption->type = E_IPCP_TYPE_IP_ADDRESS;
                 l_nackOption->length = 6;

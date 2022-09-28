@@ -128,6 +128,8 @@ void hdlcInit(struct ts_client *p_client) {
     p_client->hdlcContext.firstFrameSent = false;
     p_client->hdlcContext.acfcEnabled = false;
     p_client->hdlcContext.accm = 0xffffffff;
+
+    pppInit(p_client);
 }
 
 void hdlcReceive(struct ts_client *p_client, uint8_t p_byte) {
