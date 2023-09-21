@@ -50,6 +50,15 @@ void pppReceive(
 
             break;
 
+        case C_PPP_PROTOCOLNUMBER_IPV4:
+            ipv4Receive(
+                p_client,
+                &p_buffer[l_dataOffset],
+                p_size - l_dataOffset
+            );
+
+            break;
+
         default:
             lcpRejectProtocol(
                 p_client,

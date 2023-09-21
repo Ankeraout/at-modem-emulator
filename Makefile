@@ -1,51 +1,38 @@
-CC=cc -c
-CFLAGS=-W -Wall -Wextra -std=gnu11 -pedantic
-LD=cc
-LDFLAGS=-lpthread
+MAKEFLAGS += --no-builtin-rules
 
-BINDIR=bin
+MKDIR := mkdir -p
+RM := rm -rf
+CC := gcc -c
+LD := gcc
 
-SOURCES= \
-	src/modem.c \
-	src/tun.c \
-	src/server.c \
-	src/client.c \
-	src/protocols/hayes.c \
-	src/protocols/hdlc.c \
-	src/protocols/ppp.c \
-	src/protocols/ipv4.c \
-	src/protocols/lcp.c \
-	src/protocols/ipcp.c
+CFLAGS += -MMD -MP
+CFLAGS += -W -Wall -Wextra
+CFLAGS += -std=gnu99 -pedantic-errors
+CFLAGS += -g3 -O0
+CFLAGS += -Iinclude
 
-OBJECTS=$(SOURCES:%.c=%.o)
-EXEC=$(BINDIR)/modem
+rwildcard = $(foreach d,$(wildcard $(1:=/*)),$(call rwildcard,$d,$2) $(filter $(subst *,%,$2),$d))
 
-ifeq ($(MODE),)
-    MODE = release
-endif
+SOURCES := $(call rwildcard, ., *.c)
+OBJECTS := $(patsubst ./%.c, obj/%.c.o, $(SOURCES))
+DIRECTORIES := $(patsubst ./%, obj/%, $(dir $(SOURCES)))
+EXECUTABLE := bin/modem
+DEPENDENCIES := $(patsubst ./%.c, obj/%.c.d, $(SOURCES))
 
-ifeq ($(MODE), debug)
-	CFLAGS += -DDEBUG -O0 -g
-	LDFLAGS += -g
-else
-	CFLAGS += -O3 -march=native
-	LDFLAGS += -s
-endif
+all: dirs $(EXECUTABLE)
 
-CFLAGS += -I`pwd`/src
-
-all: $(EXEC)
-
-$(BINDIR):
-	mkdir $(BINDIR)
-
-$(EXEC): $(OBJECTS) bin
-	$(LD) $(OBJECTS) -o $(EXEC) $(LDFLAGS)
-
-%.o: %.c
+obj/%.c.o: ./%.c
 	$(CC) $(CFLAGS) $< -o $@
 
-clean:
-	rm -rf $(OBJECTS) $(BINDIR)
+$(EXECUTABLE): $(OBJECTS)
+	$(LD) $(LDFLAGS) $^ -o $@
 
-.PHONY: clean all
+clean:
+	$(RM) bin obj
+
+-include $(DEPENDENCIES)
+
+dirs:
+	$(MKDIR) bin $(DIRECTORIES)
+
+.PHONY: all clean dirs

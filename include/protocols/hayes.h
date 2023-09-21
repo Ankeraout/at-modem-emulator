@@ -37,6 +37,7 @@ struct ts_hayesContext {
     int commandParameterInt1;
     int commandParameterInt2;
     enum te_hayesCommandResult commandResult;
+    const char *customCommandResult;
     bool echo;
     bool quiet;
     bool verbose;

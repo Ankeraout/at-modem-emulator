@@ -32,6 +32,10 @@ static void hayesSendCommandResult(
     struct ts_client *p_client,
     enum te_hayesCommandResult p_commandResult
 );
+static void hayesSendInformation(
+    struct ts_client *p_client,
+    const char *p_information
+);
 
 static void hayesHandleUnknown(struct ts_client *p_client);
 static void hayesHandleA(struct ts_client *p_client);
@@ -225,6 +229,21 @@ static void hayesSendCommandResult(
         } else {
             sprintf(l_buffer, "%d\r", p_commandResult);
         }
+    }
+
+    clientWriteString(p_client, l_buffer);
+}
+
+static void hayesSendInformation(
+    struct ts_client *p_client,
+    const char *p_information
+) {
+    char l_buffer[64];
+
+    if(p_client->hayesContext.verbose) {
+        sprintf(l_buffer, "\r\n%s\r\n", p_information);
+    } else {
+        sprintf(l_buffer, "%s\r\n", p_information);
     }
 
     clientWriteString(p_client, l_buffer);
@@ -447,7 +466,9 @@ static void hayesHandleH(struct ts_client *p_client) {
 }
 
 static void hayesHandleI(struct ts_client *p_client) {
-    p_client->hayesContext.commandResult = E_HAYESCOMMANDRESULT_ERROR;
+    p_client->hayesContext.commandResult = E_HAYESCOMMANDRESULT_OK;
+
+    hayesSendInformation(p_client, "at-modem-emulator");
 }
 
 static void hayesHandleL(struct ts_client *p_client) {

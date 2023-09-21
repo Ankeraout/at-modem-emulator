@@ -37,6 +37,7 @@ void ipcpReceive(
         ipcpHandleConfigureRequest(p_client, l_ipcpPacket, p_size);
     } else if(l_ipcpPacket->header.code == E_LCP_CODE_CONFIGURE_ACK) {
         printf("ipcp: Client #%d acknowledged configuration.\n", p_client->id);
+        p_client->ipv4Context.isConfigured = true;
     } else if(l_ipcpPacket->header.code == E_LCP_CODE_CONFIGURE_NAK) {
         printf("ipcp: Client #%d nacked configuration.\n", p_client->id);
     } else if(l_ipcpPacket->header.code == E_LCP_CODE_CONFIGURE_REJECT) {
@@ -198,8 +199,35 @@ static void ipcpHandleConfigureRequest(
     );
 
     if(l_responsePacket->header.code == E_LCP_CODE_CONFIGURE_ACK) {
+        uint8_t l_configureRequestPacketBuffer[10];
+        struct ts_lcpPacket *l_configureRequestPacket =
+            (struct ts_lcpPacket *)l_configureRequestPacketBuffer;
+
         printf(
             "ipcp: Client #%d's configuration was acknowledged.\n",
+            p_client->id
+        );
+
+        l_configureRequestPacket->header.code = E_LCP_CODE_CONFIGURE_REQUEST;
+        l_configureRequestPacket->header.identifier = 0;
+        l_configureRequestPacket->header.length = htons(10);
+
+        struct ts_lcpOption *l_option =
+            (struct ts_lcpOption*)l_configureRequestPacket->data;
+
+        l_option->type = E_IPCP_TYPE_IP_ADDRESS;
+        l_option->length = 6;
+        ipv4GetGatewayAddress(l_option->data);
+
+        pppSend(
+            p_client,
+            C_PPP_PROTOCOLNUMBER_IPCP,
+            l_configureRequestPacketBuffer,
+            sizeof(l_configureRequestPacketBuffer)
+        );
+
+        printf(
+            "ipcp: Sent Configure-Request to client #%d.\n",
             p_client->id
         );
     } else if(l_responsePacket->header.code == E_LCP_CODE_CONFIGURE_NAK) {

@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <arpa/inet.h>
+
 #include "client.h"
 
 #define C_IPV4_NETWORK_ADDRESS 0xc0a83200
@@ -87,14 +89,22 @@ void ipv4Free(struct ts_client *p_client) {
     }
 }
 
-void ipv4Receive(uint8_t *p_buffer, size_t p_size) {
-    // Remove warnings temporarily
-    (void)p_buffer;
-    (void)p_size;
+void ipv4Receive(struct ts_client *p_client, const uint8_t *p_buffer, size_t p_size) {
+    if(!p_client->ipv4Context.isConfigured) {
+        return;
+    }
+
+    printf("ipv4: Received packet from client #%d\n", p_client->id);
 }
 
-void ipv4Send(uint8_t *p_buffer, size_t p_size) {
-    // Remove warnings temporarily
-    (void)p_buffer;
-    (void)p_size;
+void ipv4Send(struct ts_client *p_client, uint8_t *p_buffer, size_t p_size) {
+    if(!p_client->ipv4Context.isConfigured) {
+        return;
+    }
+
+    pppSend(p_client, C_PPP_PROTOCOLNUMBER_IPV4, p_buffer, p_size);
+}
+
+void ipv4GetGatewayAddress(void *p_buffer) {
+    *(uint32_t *)p_buffer = htonl(C_IPV4_NETWORK_ADDRESS + 1);
 }

@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <netinet/tcp.h>
 
 static int s_serverSocket;
 
@@ -56,5 +57,24 @@ int serverAccept(
     struct sockaddr *p_clientAddress,
     socklen_t *p_clientAddressLength
 ) {
-    return accept(s_serverSocket, p_clientAddress, p_clientAddressLength);
+    int l_clientSocket = accept(
+        s_serverSocket,
+        p_clientAddress,
+        p_clientAddressLength
+    );
+
+    int l_flag = 1;
+    int l_result = setsockopt(
+        l_clientSocket,
+        IPPROTO_TCP,
+        TCP_NODELAY,
+        (char *)&l_flag,
+        sizeof(int)
+    );
+
+    if(l_result < 0) {
+        perror("Failed to set TCP_NODELAY");
+    }
+
+    return l_clientSocket;
 }
