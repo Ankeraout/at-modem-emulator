@@ -26,9 +26,6 @@ int main(void) {
 
     clientInit();
 
-    // Prepare the IPv4 protocol
-    ipv4Init();
-
     // Prepare the tun interface
     //tunOpen(l_tunDeviceName);
 

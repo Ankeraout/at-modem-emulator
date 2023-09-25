@@ -1,10 +1,10 @@
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
-#include "client.h"
-#include "protocols/hdlc.h"
+#include "protocols/hayes.h"
 
 enum te_hayesCommandParserState {
     E_HAYESCOMMANDPARSERSTATE_COMMAND,
@@ -26,34 +26,38 @@ static const char *s_resultStrings[] = {
     "NO ANSWER"
 };
 
-static void hayesProcessCommand(struct ts_client *p_client);
-static void hayesProcessSubcommand(struct ts_client *p_client);
+static inline void hayesReceiveByte(
+    struct ts_hayesContext *p_context,
+    uint8_t p_byte
+);
+static void hayesProcessCommand(struct ts_hayesContext *p_context);
+static void hayesProcessSubcommand(struct ts_hayesContext *p_context);
 static void hayesSendCommandResult(
-    struct ts_client *p_client,
+    struct ts_hayesContext *p_context,
     enum te_hayesCommandResult p_commandResult
 );
 static void hayesSendInformation(
-    struct ts_client *p_client,
+    struct ts_hayesContext *p_context,
     const char *p_information
 );
 
-static void hayesHandleUnknown(struct ts_client *p_client);
-static void hayesHandleA(struct ts_client *p_client);
-static void hayesHandleD(struct ts_client *p_client);
-static void hayesHandleE(struct ts_client *p_client);
-static void hayesHandleH(struct ts_client *p_client);
-static void hayesHandleI(struct ts_client *p_client);
-static void hayesHandleL(struct ts_client *p_client);
-static void hayesHandleM(struct ts_client *p_client);
-static void hayesHandleO(struct ts_client *p_client);
-static void hayesHandleQ(struct ts_client *p_client);
-static void hayesHandleSGet(struct ts_client *p_client);
-static void hayesHandleSSet(struct ts_client *p_client);
-static void hayesHandleV(struct ts_client *p_client);
-static void hayesHandleX(struct ts_client *p_client);
-static void hayesHandleZ(struct ts_client *p_client);
+static void hayesHandleUnknown(struct ts_hayesContext *p_context);
+static void hayesHandleA(struct ts_hayesContext *p_context);
+static void hayesHandleD(struct ts_hayesContext *p_context);
+static void hayesHandleE(struct ts_hayesContext *p_context);
+static void hayesHandleH(struct ts_hayesContext *p_context);
+static void hayesHandleI(struct ts_hayesContext *p_context);
+static void hayesHandleL(struct ts_hayesContext *p_context);
+static void hayesHandleM(struct ts_hayesContext *p_context);
+static void hayesHandleO(struct ts_hayesContext *p_context);
+static void hayesHandleQ(struct ts_hayesContext *p_context);
+static void hayesHandleSGet(struct ts_hayesContext *p_context);
+static void hayesHandleSSet(struct ts_hayesContext *p_context);
+static void hayesHandleV(struct ts_hayesContext *p_context);
+static void hayesHandleX(struct ts_hayesContext *p_context);
+static void hayesHandleZ(struct ts_hayesContext *p_context);
 
-typedef void (*t_hayesCommandHandler)(struct ts_client *p_client);
+typedef void (*t_hayesCommandHandler)(struct ts_hayesContext *p_context);
 
 static t_hayesCommandHandler s_hayesCommandHandlers[52] = {
     hayesHandleA,
@@ -110,70 +114,102 @@ static t_hayesCommandHandler s_hayesCommandHandlers[52] = {
     hayesHandleZ,
 };
 
-void hayesInit(struct ts_client *p_client) {
-    hayesHandleZ(p_client);
-    p_client->hayesContext.state = E_HAYESSTATE_CMD;
-    p_client->hayesContext.commandBufferSize = 0;
-    p_client->hayesContext.commandReject = false;
+void hayesInit(
+    struct ts_hayesContext *p_context,
+    tf_pppSendHandler *p_sendHandler,
+    void *p_sendHandlerArg,
+    tf_pppReceiveHandler *p_receiveHandler,
+    void *p_receiveHandlerArg
+) {
+    hayesHandleZ(p_context);
+    p_context->state = E_HAYESSTATE_CMD;
+    p_context->commandBufferSize = 0;
+    p_context->commandReject = false;
+    p_context->sendHandler = p_sendHandler;
+    p_context->sendHandlerArg = p_sendHandlerArg;
+    p_context->receiveHandler = p_receiveHandler;
+    p_context->receiveHandlerArg = p_receiveHandlerArg;
 }
 
-void hayesReceive(struct ts_client *p_client, uint8_t p_byte) {
-    switch(p_client->hayesContext.state) {
+void hayesReceive(void *p_arg, const void *p_buffer, size_t p_size) {
+    struct ts_hayesContext *l_context = (struct ts_hayesContext *)p_arg;
+    const uint8_t *l_buffer = (const uint8_t *)p_buffer;
+
+    for(size_t l_index = 0; l_index < p_size; l_index++) {
+        hayesReceiveByte(l_context, l_buffer[l_index]);
+    }
+}
+
+void hayesSend(
+    void *p_arg,
+    const void *p_buffer,
+    size_t p_size
+) {
+    struct ts_hayesContext *l_context = (struct ts_hayesContext *)p_arg;
+
+    l_context->sendHandler(l_context->sendHandlerArg, p_buffer, p_size);
+}
+
+static inline void hayesReceiveByte(
+    struct ts_hayesContext *p_context,
+    uint8_t p_byte
+) {
+    switch(p_context->state) {
         case E_HAYESSTATE_CMD:
             if(p_byte == 'A' || p_byte == 'a') {
-                p_client->hayesContext.state = E_HAYESSTATE_CMD_A;
+                p_context->state = E_HAYESSTATE_CMD_A;
             }
 
-            if(p_client->hayesContext.echo) {
-                hayesSend(p_client, &p_byte, 1);
+            if(p_context->echo) {
+                hayesSend(p_context, &p_byte, 1);
             }
 
             break;
 
         case E_HAYESSTATE_CMD_A:
             if(p_byte == 'T' || p_byte == 't') {
-                p_client->hayesContext.state = E_HAYESSTATE_CMD_AT;
-                p_client->hayesContext.commandBufferSize = 0;
-                p_client->hayesContext.commandResult = E_HAYESCOMMANDRESULT_OK;
+                p_context->state = E_HAYESSTATE_CMD_AT;
+                p_context->commandBufferSize = 0;
+                p_context->commandResult = E_HAYESCOMMANDRESULT_OK;
             } else {
-                p_client->hayesContext.state = E_HAYESSTATE_CMD;
+                p_context->state = E_HAYESSTATE_CMD;
             }
 
-            if(p_client->hayesContext.echo) {
-                hayesSend(p_client, &p_byte, 1);
+            if(p_context->echo) {
+                hayesSend(p_context, &p_byte, 1);
             }
 
             break;
 
         case E_HAYESSTATE_CMD_AT:
             if(p_byte == '\r') {
-                if(!p_client->hayesContext.commandReject) {
-                    if(p_client->hayesContext.echo) {
-                        hayesSend(p_client, &p_byte, 1);
+                if(!p_context->commandReject) {
+                    if(p_context->echo) {
+                        hayesSend(p_context, &p_byte, 1);
                     }
 
-                    hayesProcessCommand(p_client);
+                    hayesProcessCommand(p_context);
 
-                    if(p_client->hayesContext.state == E_HAYESSTATE_CMD_AT) {
-                        p_client->hayesContext.state = E_HAYESSTATE_CMD;
+                    if(p_context->state == E_HAYESSTATE_CMD_AT) {
+                        p_context->state = E_HAYESSTATE_CMD;
                     }
                 }
             } else if(
-                p_client->hayesContext.commandBufferSize
+                p_context->commandBufferSize
                 < C_HAYES_COMMAND_BUFFER_SIZE
             ) {
-                p_client->hayesContext.commandBuffer[
-                    p_client->hayesContext.commandBufferSize++
+                p_context->commandBuffer[
+                    p_context->commandBufferSize++
                 ] = p_byte;
 
-                if(p_client->hayesContext.echo) {
-                    hayesSend(p_client, &p_byte, 1);
+                if(p_context->echo) {
+                    hayesSend(p_context, &p_byte, 1);
                 }
             } else {
-                p_client->hayesContext.commandReject = true;
+                p_context->commandReject = true;
 
-                if(p_client->hayesContext.echo) {
-                    hayesSend(p_client, &p_byte, 1);
+                if(p_context->echo) {
+                    hayesSend(p_context, &p_byte, 1);
                 }
             }
 
@@ -181,129 +217,146 @@ void hayesReceive(struct ts_client *p_client, uint8_t p_byte) {
 
         case E_HAYESSTATE_DATA:
             if(p_byte == '+') {
-                p_client->hayesContext.state = E_HAYESSTATE_DATA_PLUS1;
+                p_context->state = E_HAYESSTATE_DATA_PLUS1;
             } else {
-                hdlcReceive(p_client, p_byte);
+                p_context->receiveHandler(
+                    p_context->receiveHandlerArg,
+                    &p_byte,
+                    1
+                );
             }
 
             break;
 
         case E_HAYESSTATE_DATA_PLUS1:
             if(p_byte == '+') {
-                p_client->hayesContext.state = E_HAYESSTATE_DATA_PLUS2;
+                p_context->state = E_HAYESSTATE_DATA_PLUS2;
             } else {
-                hdlcReceive(p_client, '+');
-                hdlcReceive(p_client, p_byte);
-                p_client->hayesContext.state = E_HAYESSTATE_DATA;
+                p_context->receiveHandler(
+                    p_context->receiveHandlerArg,
+                    "+",
+                    1
+                );
+                p_context->receiveHandler(
+                    p_context->receiveHandlerArg,
+                    &p_byte,
+                    1
+                );
+                p_context->state = E_HAYESSTATE_DATA;
             }
 
             break;
 
         case E_HAYESSTATE_DATA_PLUS2:
             if(p_byte == '+') {
-                p_client->hayesContext.state = E_HAYESSTATE_CMD;
+                p_context->state = E_HAYESSTATE_CMD;
             } else {
-                hdlcReceive(p_client, '+');
-                hdlcReceive(p_client, '+');
-                hdlcReceive(p_client, p_byte);
-                p_client->hayesContext.state = E_HAYESSTATE_DATA;
+                p_context->receiveHandler(
+                    p_context->receiveHandlerArg,
+                    "++",
+                    2
+                );
+                p_context->receiveHandler(
+                    p_context->receiveHandlerArg,
+                    &p_byte,
+                    1
+                );
+                p_context->state = E_HAYESSTATE_DATA;
             }
 
             break;
     }
 }
 
-void hayesSend(struct ts_client *p_client, uint8_t *p_buffer, size_t p_size) {
-    clientWrite(p_client, p_buffer, p_size);
-}
-
 static void hayesSendCommandResult(
-    struct ts_client *p_client,
+    struct ts_hayesContext *p_context,
     enum te_hayesCommandResult p_commandResult
 ) {
     char l_buffer[64];
+    int l_size;
 
-    if(!p_client->hayesContext.quiet) {
-        if(p_client->hayesContext.verbose) {
-            sprintf(l_buffer, "\r\n%s\r\n", s_resultStrings[p_commandResult]);
+    if(!p_context->quiet) {
+        if(p_context->verbose) {
+            l_size = sprintf(l_buffer, "\r\n%s\r\n", s_resultStrings[p_commandResult]);
         } else {
-            sprintf(l_buffer, "%d\r", p_commandResult);
+            l_size = sprintf(l_buffer, "%d\r", p_commandResult);
         }
-    }
 
-    clientWriteString(p_client, l_buffer);
+        p_context->sendHandler(p_context->sendHandlerArg, l_buffer, l_size);
+    }
 }
 
 static void hayesSendInformation(
-    struct ts_client *p_client,
+    struct ts_hayesContext *p_context,
     const char *p_information
 ) {
     char l_buffer[64];
+    int l_size;
 
-    if(p_client->hayesContext.verbose) {
-        sprintf(l_buffer, "\r\n%s\r\n", p_information);
+    if(p_context->verbose) {
+        l_size = sprintf(l_buffer, "\r\n%s\r\n", p_information);
     } else {
-        sprintf(l_buffer, "%s\r\n", p_information);
+        l_size = sprintf(l_buffer, "%s\r\n", p_information);
     }
 
-    clientWriteString(p_client, l_buffer);
+    p_context->sendHandler(p_context->sendHandlerArg, l_buffer, l_size);
 }
 
-static void hayesProcessSubcommand(struct ts_client *p_client) {
+static void hayesProcessSubcommand(struct ts_hayesContext *p_context) {
     if(
-        p_client->hayesContext.commandName >= 'a'
-        && p_client->hayesContext.commandName <= 'z'
+        p_context->commandName >= 'a'
+        && p_context->commandName <= 'z'
     ) {
-        s_hayesCommandHandlers[p_client->hayesContext.commandName - 'a' + 26](
-            p_client
+        s_hayesCommandHandlers[p_context->commandName - 'a' + 26](
+            p_context
         );
     } else {
-        s_hayesCommandHandlers[p_client->hayesContext.commandName - 'A'](
-            p_client
+        s_hayesCommandHandlers[p_context->commandName - 'A'](
+            p_context
         );
     }
 }
 
-static void hayesProcessCommand(struct ts_client *p_client) {
+static void hayesProcessCommand(struct ts_hayesContext *p_context) {
     char l_commandBuffer[100];
-    memcpy(l_commandBuffer, p_client->hayesContext.commandBuffer, p_client->hayesContext.commandBufferSize);
-    l_commandBuffer[p_client->hayesContext.commandBufferSize] = '\0';
+    memcpy(l_commandBuffer, p_context->commandBuffer, p_context->commandBufferSize);
+    l_commandBuffer[p_context->commandBufferSize] = '\0';
 
     enum te_hayesCommandParserState l_parserState =
         E_HAYESCOMMANDPARSERSTATE_COMMAND;
 
     for(
         int l_stringIndex = 0;
-        l_stringIndex < p_client->hayesContext.commandBufferSize;
+        l_stringIndex < p_context->commandBufferSize;
         l_stringIndex++
     ) {
-        char l_c = p_client->hayesContext.commandBuffer[l_stringIndex];
+        char l_c = p_context->commandBuffer[l_stringIndex];
 
-        if(p_client->hayesContext.commandResult == E_HAYESCOMMANDRESULT_ERROR) {
+        if(p_context->commandResult == E_HAYESCOMMANDRESULT_ERROR) {
             break;
         }
 
         switch(l_parserState) {
             case E_HAYESCOMMANDPARSERSTATE_COMMAND:
                 if(l_c == 'D' || l_c == 'd') {
-                    p_client->hayesContext.commandName = 'D';
+                    p_context->commandName = 'D';
 
                     l_parserState = E_HAYESCOMMANDPARSERSTATE_D;
                 } else if(l_c == 'S' || l_c == 's') {
-                    p_client->hayesContext.commandName = 's';
+                    p_context->commandName = 's';
 
                     l_parserState = E_HAYESCOMMANDPARSERSTATE_S;
-                    p_client->hayesContext.commandParameterInt1 = 0;
+                    p_context->commandParameterInt1 = 0;
                 } else if(
                     (l_c >= 'A' && l_c <= 'Z')
                     || (l_c >= 'a' && l_c <= 'z')
                 ) {
-                    p_client->hayesContext.commandName = l_c;
+                    p_context->commandName = l_c;
 
                     l_parserState = E_HAYESCOMMANDPARSERSTATE_NUMBER;
-                    p_client->hayesContext.commandParameterInt1 = 0;
+                    p_context->commandParameterInt1 = 0;
                 } else {
-                    p_client->hayesContext.commandResult =
+                    p_context->commandResult =
                         E_HAYESCOMMANDRESULT_ERROR;
                 }
 
@@ -311,33 +364,33 @@ static void hayesProcessCommand(struct ts_client *p_client) {
 
             case E_HAYESCOMMANDPARSERSTATE_NUMBER:
                 if(l_c >= '0' && l_c <= '9') {
-                    p_client->hayesContext.commandParameterInt1 *= 10;
-                    p_client->hayesContext.commandParameterInt1 += l_c - '0';
+                    p_context->commandParameterInt1 *= 10;
+                    p_context->commandParameterInt1 += l_c - '0';
                 } else if(l_c == 'D' || l_c == 'd') {
-                    hayesProcessSubcommand(p_client);
+                    hayesProcessSubcommand(p_context);
 
-                    p_client->hayesContext.commandName = 'D';
+                    p_context->commandName = 'D';
 
                     l_parserState = E_HAYESCOMMANDPARSERSTATE_D;
                 } else if(l_c == 'S' || l_c == 's') {
-                    hayesProcessSubcommand(p_client);
+                    hayesProcessSubcommand(p_context);
 
-                    p_client->hayesContext.commandName = 's';
+                    p_context->commandName = 's';
 
                     l_parserState = E_HAYESCOMMANDPARSERSTATE_S;
-                    p_client->hayesContext.commandParameterInt1 = 0;
+                    p_context->commandParameterInt1 = 0;
                 } else if(
                     (l_c >= 'A' && l_c <= 'Z')
                     || (l_c >= 'a' && l_c <= 'z')
                 ) {
-                    hayesProcessSubcommand(p_client);
+                    hayesProcessSubcommand(p_context);
 
-                    p_client->hayesContext.commandName = l_c;
+                    p_context->commandName = l_c;
 
                     l_parserState = E_HAYESCOMMANDPARSERSTATE_NUMBER;
-                    p_client->hayesContext.commandParameterInt1 = 0;
+                    p_context->commandParameterInt1 = 0;
                 } else {
-                    p_client->hayesContext.commandResult =
+                    p_context->commandResult =
                         E_HAYESCOMMANDRESULT_ERROR;
                 }
 
@@ -363,10 +416,10 @@ static void hayesProcessCommand(struct ts_client *p_client) {
                 ) {
                     // Do nothing
                 } else if(l_c == ';') {
-                    hayesProcessSubcommand(p_client);
+                    hayesProcessSubcommand(p_context);
                     l_parserState = E_HAYESCOMMANDPARSERSTATE_COMMAND;
                 } else {
-                    p_client->hayesContext.commandResult =
+                    p_context->commandResult =
                         E_HAYESCOMMANDRESULT_ERROR;
                 }
 
@@ -374,18 +427,18 @@ static void hayesProcessCommand(struct ts_client *p_client) {
 
             case E_HAYESCOMMANDPARSERSTATE_S:
                 if(l_c >= '0' && l_c <= '9') {
-                    p_client->hayesContext.commandParameterInt1 *= 10;
-                    p_client->hayesContext.commandParameterInt1 += l_c - '0';
+                    p_context->commandParameterInt1 *= 10;
+                    p_context->commandParameterInt1 += l_c - '0';
                 } else if(l_c == '=') {
-                    p_client->hayesContext.commandName = 'S';
+                    p_context->commandName = 'S';
 
                     l_parserState = E_HAYESCOMMANDPARSERSTATE_S_EQ;
-                    p_client->hayesContext.commandParameterInt2 = 0;
+                    p_context->commandParameterInt2 = 0;
                 } else if(l_c == '?') {
-                    hayesProcessSubcommand(p_client);
+                    hayesProcessSubcommand(p_context);
                     l_parserState = E_HAYESCOMMANDPARSERSTATE_COMMAND;
                 } else {
-                    p_client->hayesContext.commandResult =
+                    p_context->commandResult =
                         E_HAYESCOMMANDRESULT_ERROR;
                 }
 
@@ -393,33 +446,33 @@ static void hayesProcessCommand(struct ts_client *p_client) {
 
             case E_HAYESCOMMANDPARSERSTATE_S_EQ:
                 if(l_c >= '0' && l_c <= '9') {
-                    p_client->hayesContext.commandParameterInt2 *= 10;
-                    p_client->hayesContext.commandParameterInt2 += l_c;
+                    p_context->commandParameterInt2 *= 10;
+                    p_context->commandParameterInt2 += l_c;
                 } else if(l_c == 'D' || l_c == 'd') {
-                    hayesProcessSubcommand(p_client);
+                    hayesProcessSubcommand(p_context);
 
-                    p_client->hayesContext.commandName = 'D';
+                    p_context->commandName = 'D';
 
                     l_parserState = E_HAYESCOMMANDPARSERSTATE_D;
                 } else if(l_c == 'S' || l_c == 's') {
-                    hayesProcessSubcommand(p_client);
+                    hayesProcessSubcommand(p_context);
 
-                    p_client->hayesContext.commandName = 's';
+                    p_context->commandName = 's';
 
                     l_parserState = E_HAYESCOMMANDPARSERSTATE_S;
-                    p_client->hayesContext.commandParameterInt1 = 0;
+                    p_context->commandParameterInt1 = 0;
                 } else if(
                     (l_c >= 'A' && l_c <= 'Z')
                     || (l_c >= 'a' && l_c <= 'z')
                 ) {
-                    hayesProcessSubcommand(p_client);
+                    hayesProcessSubcommand(p_context);
 
-                    p_client->hayesContext.commandName = l_c;
+                    p_context->commandName = l_c;
 
                     l_parserState = E_HAYESCOMMANDPARSERSTATE_NUMBER;
-                    p_client->hayesContext.commandParameterInt1 = 0;
+                    p_context->commandParameterInt1 = 0;
                 } else {
-                    p_client->hayesContext.commandResult =
+                    p_context->commandResult =
                         E_HAYESCOMMANDRESULT_ERROR;
                 }
 
@@ -428,151 +481,151 @@ static void hayesProcessCommand(struct ts_client *p_client) {
     }
 
     if(l_parserState != E_HAYESCOMMANDPARSERSTATE_COMMAND) {
-        hayesProcessSubcommand(p_client);
+        hayesProcessSubcommand(p_context);
     }
 
-    hayesSendCommandResult(p_client, p_client->hayesContext.commandResult);
+    hayesSendCommandResult(p_context, p_context->commandResult);
 }
 
-static void hayesHandleUnknown(struct ts_client *p_client) {
-    p_client->hayesContext.commandResult = E_HAYESCOMMANDRESULT_ERROR;
+static void hayesHandleUnknown(struct ts_hayesContext *p_context) {
+    p_context->commandResult = E_HAYESCOMMANDRESULT_ERROR;
 }
 
-static void hayesHandleA(struct ts_client *p_client) {
-    p_client->hayesContext.commandResult = E_HAYESCOMMANDRESULT_ERROR;
+static void hayesHandleA(struct ts_hayesContext *p_context) {
+    p_context->commandResult = E_HAYESCOMMANDRESULT_ERROR;
 }
 
-static void hayesHandleD(struct ts_client *p_client) {
-    p_client->hayesContext.commandResult = E_HAYESCOMMANDRESULT_CONNECT;
-    p_client->hayesContext.state = E_HAYESSTATE_DATA;
-    p_client->hayesContext.connected = true;
-    hdlcInit(p_client);
+static void hayesHandleD(struct ts_hayesContext *p_context) {
+    p_context->commandResult = E_HAYESCOMMANDRESULT_CONNECT;
+    p_context->state = E_HAYESSTATE_DATA;
+    p_context->connected = true;
 }
 
-static void hayesHandleE(struct ts_client *p_client) {
-    int l_parameterValue = p_client->hayesContext.commandParameterInt1;
+static void hayesHandleE(struct ts_hayesContext *p_context) {
+    int l_parameterValue = p_context->commandParameterInt1;
 
     if(l_parameterValue == 0) {
-        p_client->hayesContext.echo = false;
+        p_context->echo = false;
     } else if(l_parameterValue == 1) {
-        p_client->hayesContext.echo = true;
+        p_context->echo = true;
     } else {
-        p_client->hayesContext.commandResult = E_HAYESCOMMANDRESULT_ERROR;
+        p_context->commandResult = E_HAYESCOMMANDRESULT_ERROR;
     }
 }
 
-static void hayesHandleH(struct ts_client *p_client) {
-    p_client->hayesContext.connected = false;
+static void hayesHandleH(struct ts_hayesContext *p_context) {
+    p_context->connected = false;
 }
 
-static void hayesHandleI(struct ts_client *p_client) {
-    p_client->hayesContext.commandResult = E_HAYESCOMMANDRESULT_OK;
+static void hayesHandleI(struct ts_hayesContext *p_context) {
+    p_context->commandResult = E_HAYESCOMMANDRESULT_OK;
 
-    hayesSendInformation(p_client, "at-modem-emulator");
+    hayesSendInformation(p_context, "at-modem-emulator");
 }
 
-static void hayesHandleL(struct ts_client *p_client) {
-    int l_parameterValue = p_client->hayesContext.commandParameterInt1;
+static void hayesHandleL(struct ts_hayesContext *p_context) {
+    int l_parameterValue = p_context->commandParameterInt1;
 
     if(l_parameterValue >= 0 && l_parameterValue <= 3) {
         // Do nothing
     } else {
-        p_client->hayesContext.commandResult = E_HAYESCOMMANDRESULT_ERROR;
+        p_context->commandResult = E_HAYESCOMMANDRESULT_ERROR;
     }
 }
 
-static void hayesHandleM(struct ts_client *p_client) {
-    int l_parameterValue = p_client->hayesContext.commandParameterInt1;
+static void hayesHandleM(struct ts_hayesContext *p_context) {
+    int l_parameterValue = p_context->commandParameterInt1;
 
     if(l_parameterValue >= 0 && l_parameterValue <= 2) {
         // Do nothing
     } else {
-        p_client->hayesContext.commandResult = E_HAYESCOMMANDRESULT_ERROR;
+        p_context->commandResult = E_HAYESCOMMANDRESULT_ERROR;
     }
 }
 
-static void hayesHandleO(struct ts_client *p_client) {
-    if(p_client->hayesContext.connected) {
-        p_client->hayesContext.state = E_HAYESSTATE_DATA;
+static void hayesHandleO(struct ts_hayesContext *p_context) {
+    if(p_context->connected) {
+        p_context->state = E_HAYESSTATE_DATA;
     } else {
-        p_client->hayesContext.commandResult = E_HAYESCOMMANDRESULT_ERROR;
+        p_context->commandResult = E_HAYESCOMMANDRESULT_ERROR;
     }
 }
 
-static void hayesHandleSGet(struct ts_client *p_client) {
-    int l_registerNumber = p_client->hayesContext.commandParameterInt1;
+static void hayesHandleSGet(struct ts_hayesContext *p_context) {
+    int l_registerNumber = p_context->commandParameterInt1;
 
     if(l_registerNumber > 12) {
-        p_client->hayesContext.commandResult = E_HAYESCOMMANDRESULT_ERROR;
+        p_context->commandResult = E_HAYESCOMMANDRESULT_ERROR;
         return;
     }
 
     char l_buffer[4];
 
-    sprintf(l_buffer, "%d", p_client->hayesContext.regS[l_registerNumber]);
-    clientWriteString(p_client, l_buffer);
+    int l_size = sprintf(l_buffer, "%d", p_context->regS[l_registerNumber]);
+
+    p_context->sendHandler(p_context->sendHandlerArg, l_buffer, l_size);
 }
 
-static void hayesHandleSSet(struct ts_client *p_client) {
-    int l_registerNumber = p_client->hayesContext.commandParameterInt1;
-    int l_registerValue = p_client->hayesContext.commandParameterInt2;
+static void hayesHandleSSet(struct ts_hayesContext *p_context) {
+    int l_registerNumber = p_context->commandParameterInt1;
+    int l_registerValue = p_context->commandParameterInt2;
 
     if(l_registerNumber > 12) {
-        p_client->hayesContext.commandResult = E_HAYESCOMMANDRESULT_ERROR;
+        p_context->commandResult = E_HAYESCOMMANDRESULT_ERROR;
         return;
     }
 
     if(l_registerValue > 255) {
-        p_client->hayesContext.commandResult = E_HAYESCOMMANDRESULT_ERROR;
+        p_context->commandResult = E_HAYESCOMMANDRESULT_ERROR;
     }
 
-    p_client->hayesContext.regS[l_registerNumber] = l_registerValue;
+    p_context->regS[l_registerNumber] = l_registerValue;
 }
 
-static void hayesHandleQ(struct ts_client *p_client) {
-    int l_parameterValue = p_client->hayesContext.commandParameterInt1;
+static void hayesHandleQ(struct ts_hayesContext *p_context) {
+    int l_parameterValue = p_context->commandParameterInt1;
 
     if(l_parameterValue == 0) {
-        p_client->hayesContext.quiet = false;
+        p_context->quiet = false;
     } else if(l_parameterValue == 1) {
-        p_client->hayesContext.quiet = true;
+        p_context->quiet = true;
     } else {
-        p_client->hayesContext.commandResult = E_HAYESCOMMANDRESULT_ERROR;
+        p_context->commandResult = E_HAYESCOMMANDRESULT_ERROR;
     }
 }
 
-static void hayesHandleV(struct ts_client *p_client) {
-    int l_parameterValue = p_client->hayesContext.commandParameterInt1;
+static void hayesHandleV(struct ts_hayesContext *p_context) {
+    int l_parameterValue = p_context->commandParameterInt1;
 
     if(l_parameterValue == 0) {
-        p_client->hayesContext.verbose = false;
+        p_context->verbose = false;
     } else if(l_parameterValue == 1) {
-        p_client->hayesContext.verbose = true;
+        p_context->verbose = true;
     } else {
-        p_client->hayesContext.commandResult = E_HAYESCOMMANDRESULT_ERROR;
+        p_context->commandResult = E_HAYESCOMMANDRESULT_ERROR;
     }
 }
 
-static void hayesHandleX(struct ts_client *p_client) {
-    p_client->hayesContext.commandResult = E_HAYESCOMMANDRESULT_ERROR;
+static void hayesHandleX(struct ts_hayesContext *p_context) {
+    p_context->commandResult = E_HAYESCOMMANDRESULT_ERROR;
 }
 
-static void hayesHandleZ(struct ts_client *p_client) {
-    p_client->hayesContext.quiet = false;
-    p_client->hayesContext.echo = true;
-    p_client->hayesContext.verbose = true;
-    p_client->hayesContext.connected = false;
-    p_client->hayesContext.regS[0] = 0;
-    p_client->hayesContext.regS[1] = 0;
-    p_client->hayesContext.regS[2] = '+';
-    p_client->hayesContext.regS[3] = '\r';
-    p_client->hayesContext.regS[4] = '\n';
-    p_client->hayesContext.regS[5] = '\b';
-    p_client->hayesContext.regS[6] = 2;
-    p_client->hayesContext.regS[7] = 50;
-    p_client->hayesContext.regS[8] = 2;
-    p_client->hayesContext.regS[9] = 6;
-    p_client->hayesContext.regS[10] = 14;
-    p_client->hayesContext.regS[11] = 95;
-    p_client->hayesContext.regS[12] = 50;
+static void hayesHandleZ(struct ts_hayesContext *p_context) {
+    p_context->quiet = false;
+    p_context->echo = true;
+    p_context->verbose = true;
+    p_context->connected = false;
+    p_context->regS[0] = 0;
+    p_context->regS[1] = 0;
+    p_context->regS[2] = '+';
+    p_context->regS[3] = '\r';
+    p_context->regS[4] = '\n';
+    p_context->regS[5] = '\b';
+    p_context->regS[6] = 2;
+    p_context->regS[7] = 50;
+    p_context->regS[8] = 2;
+    p_context->regS[9] = 6;
+    p_context->regS[10] = 14;
+    p_context->regS[11] = 95;
+    p_context->regS[12] = 50;
 }

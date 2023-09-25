@@ -1,10 +1,11 @@
 #ifndef __PROTOCOLS_HAYES_H_INCLUDED__
 #define __PROTOCOLS_HAYES_H_INCLUDED__
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#include "client.h"
+#include "protocols/ppp.h"
 
 #define C_HAYES_COMMAND_BUFFER_SIZE 64
 
@@ -43,12 +44,20 @@ struct ts_hayesContext {
     bool verbose;
     uint8_t regS[13];
     bool connected;
+    tf_pppSendHandler *sendHandler;
+    void *sendHandlerArg;
+    tf_pppReceiveHandler *receiveHandler;
+    void *receiveHandlerArg;
 };
 
-struct ts_client;
-
-void hayesInit(struct ts_client *p_client);
-void hayesReceive(struct ts_client *p_client, uint8_t p_byte);
-void hayesSend(struct ts_client *p_client, uint8_t *p_buffer, size_t p_size);
+void hayesInit(
+    struct ts_hayesContext *p_context,
+    tf_pppSendHandler *p_sendHandler,
+    void *p_sendHandlerArg,
+    tf_pppReceiveHandler *p_receiveHandler,
+    void *p_receiveHandlerArg
+);
+void hayesReceive(void *p_arg, const void *p_buffer, size_t p_size);
+void hayesSend(void *p_arg, const void *p_buffer, size_t p_size);
 
 #endif

@@ -9,7 +9,7 @@
 
 #include "client.h"
 #include "protocols/hayes.h"
-#include "protocols/ipv4.h"
+#include "protocols/hdlc.h"
 #include "protocols/ppp.h"
 
 #define C_CLIENT_TABLE_SIZE 64
@@ -68,9 +68,30 @@ static void *clientMain(void *p_arg) {
     uint8_t l_readBuffer[C_READ_BUFFER_SIZE];
 
     // Initialize client protocols
-    hayesInit(l_client);
+    // Hayes modem: socket <--> hayes <--> hdlc
+    hayesInit(
+        &l_client->hayesContext,
+        clientSend,
+        l_client,
+        hdlcReceive,
+        &l_client->hdlcContext
+    );
 
-    printf("client: Client %d connected.\n", l_client->id);
+    // PPP-HDLC (RFC 1662): hayes <--> hdlc <--> ppp
+    hdlcInit(
+        &l_client->hdlcContext,
+        hayesSend,
+        &l_client->hayesContext,
+        pppReceive,
+        &l_client->pppContext
+    );
+
+    // PPP: hdlc <--> ppp
+    pppInit(
+        &l_client->pppContext,
+        hdlcSend,
+        &l_client->hdlcContext
+    );
 
     while(true) {
         ssize_t l_bytesRead = read(
@@ -79,38 +100,18 @@ static void *clientMain(void *p_arg) {
             C_READ_BUFFER_SIZE
         );
 
-        if(l_bytesRead > 0) {
-            for(
-                int l_bufferIndex = 0;
-                l_bufferIndex < l_bytesRead;
-                l_bufferIndex++
-            ) {
-                hayesReceive(l_client, l_readBuffer[l_bufferIndex]);
-            }
-        } else {
-            break;
-        }
+        hayesReceive(&l_client->hayesContext, l_readBuffer, l_bytesRead);
     }
 
     printf("client: Client %d disconnected.\n", l_client->id);
-
-    ipv4Free(l_client);
 
     l_client->present = false;
 
     return NULL;
 }
 
-void clientWriteString(struct ts_client *p_client, const char *p_s) {
-    size_t l_stringLength = strlen(p_s);
+void clientSend(void *p_arg, const void *p_buffer, size_t p_size) {
+    struct ts_client *l_client = (struct ts_client *)p_arg;
 
-    write(p_client->socket, p_s, l_stringLength);
-}
-
-void clientWrite(
-    struct ts_client *p_client,
-    const void *p_buffer,
-    size_t p_size
-) {
-    write(p_client->socket, p_buffer, p_size);
+    write(l_client->socket, p_buffer, p_size);
 }

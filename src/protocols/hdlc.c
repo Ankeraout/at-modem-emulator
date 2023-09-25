@@ -1,23 +1,21 @@
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "client.h"
+#include "protocols/hdlc.h"
 
 #define C_PPP_FCS16_INIT 0xffff
 #define C_PPP_FCS16_GOOD 0xf0b8
-#define C_PPP_FCS32_INIT 0xffffffff
-#define C_PPP_FCS32_GOOD 0xdebb20e3
 
-static void hdlcDiscardFrame(struct ts_client *p_client);
-static void hdlcReceiveFrame(struct ts_client *p_client);
-static inline void hdlcSendAppend(struct ts_client *p_client, uint8_t p_byte);
-static inline void hdlcSendAppendFcs(struct ts_client *p_client);
-static inline void hdlcSendAppendNoFcs(
-    struct ts_client *p_client,
+static inline void hdlcReceiveByte(
+    struct ts_hdlcContext *p_context,
     uint8_t p_byte
 );
+static inline void hdlcReceiveFrame(struct ts_hdlcContext *p_context);
+static inline void hdlcDiscardFrame(struct ts_hdlcContext *p_context);
 static uint16_t hdlcComputeFcs16(const uint8_t *p_buffer, size_t p_size);
-static uint32_t hdlcComputeFcs32(const uint8_t *p_buffer, size_t p_size);
 
 static const uint16_t s_fcs16Table[256] = {
     0x0000, 0x1189, 0x2312, 0x329b, 0x4624, 0x57ad, 0x6536, 0x74bf,
@@ -54,289 +52,160 @@ static const uint16_t s_fcs16Table[256] = {
     0x7bc7, 0x6a4e, 0x58d5, 0x495c, 0x3de3, 0x2c6a, 0x1ef1, 0x0f78
 };
 
-static const uint32_t s_fcs32Table[256] = {
-    0x00000000, 0x77073096, 0xee0e612c, 0x990951ba,
-    0x076dc419, 0x706af48f, 0xe963a535, 0x9e6495a3,
-    0x0edb8832, 0x79dcb8a4, 0xe0d5e91e, 0x97d2d988,
-    0x09b64c2b, 0x7eb17cbd, 0xe7b82d07, 0x90bf1d91,
-    0x1db71064, 0x6ab020f2, 0xf3b97148, 0x84be41de,
-    0x1adad47d, 0x6ddde4eb, 0xf4d4b551, 0x83d385c7,
-    0x136c9856, 0x646ba8c0, 0xfd62f97a, 0x8a65c9ec,
-    0x14015c4f, 0x63066cd9, 0xfa0f3d63, 0x8d080df5,
-    0x3b6e20c8, 0x4c69105e, 0xd56041e4, 0xa2677172,
-    0x3c03e4d1, 0x4b04d447, 0xd20d85fd, 0xa50ab56b,
-    0x35b5a8fa, 0x42b2986c, 0xdbbbc9d6, 0xacbcf940,
-    0x32d86ce3, 0x45df5c75, 0xdcd60dcf, 0xabd13d59,
-    0x26d930ac, 0x51de003a, 0xc8d75180, 0xbfd06116,
-    0x21b4f4b5, 0x56b3c423, 0xcfba9599, 0xb8bda50f,
-    0x2802b89e, 0x5f058808, 0xc60cd9b2, 0xb10be924,
-    0x2f6f7c87, 0x58684c11, 0xc1611dab, 0xb6662d3d,
-    0x76dc4190, 0x01db7106, 0x98d220bc, 0xefd5102a,
-    0x71b18589, 0x06b6b51f, 0x9fbfe4a5, 0xe8b8d433,
-    0x7807c9a2, 0x0f00f934, 0x9609a88e, 0xe10e9818,
-    0x7f6a0dbb, 0x086d3d2d, 0x91646c97, 0xe6635c01,
-    0x6b6b51f4, 0x1c6c6162, 0x856530d8, 0xf262004e,
-    0x6c0695ed, 0x1b01a57b, 0x8208f4c1, 0xf50fc457,
-    0x65b0d9c6, 0x12b7e950, 0x8bbeb8ea, 0xfcb9887c,
-    0x62dd1ddf, 0x15da2d49, 0x8cd37cf3, 0xfbd44c65,
-    0x4db26158, 0x3ab551ce, 0xa3bc0074, 0xd4bb30e2,
-    0x4adfa541, 0x3dd895d7, 0xa4d1c46d, 0xd3d6f4fb,
-    0x4369e96a, 0x346ed9fc, 0xad678846, 0xda60b8d0,
-    0x44042d73, 0x33031de5, 0xaa0a4c5f, 0xdd0d7cc9,
-    0x5005713c, 0x270241aa, 0xbe0b1010, 0xc90c2086,
-    0x5768b525, 0x206f85b3, 0xb966d409, 0xce61e49f,
-    0x5edef90e, 0x29d9c998, 0xb0d09822, 0xc7d7a8b4,
-    0x59b33d17, 0x2eb40d81, 0xb7bd5c3b, 0xc0ba6cad,
-    0xedb88320, 0x9abfb3b6, 0x03b6e20c, 0x74b1d29a,
-    0xead54739, 0x9dd277af, 0x04db2615, 0x73dc1683,
-    0xe3630b12, 0x94643b84, 0x0d6d6a3e, 0x7a6a5aa8,
-    0xe40ecf0b, 0x9309ff9d, 0x0a00ae27, 0x7d079eb1,
-    0xf00f9344, 0x8708a3d2, 0x1e01f268, 0x6906c2fe,
-    0xf762575d, 0x806567cb, 0x196c3671, 0x6e6b06e7,
-    0xfed41b76, 0x89d32be0, 0x10da7a5a, 0x67dd4acc,
-    0xf9b9df6f, 0x8ebeeff9, 0x17b7be43, 0x60b08ed5,
-    0xd6d6a3e8, 0xa1d1937e, 0x38d8c2c4, 0x4fdff252,
-    0xd1bb67f1, 0xa6bc5767, 0x3fb506dd, 0x48b2364b,
-    0xd80d2bda, 0xaf0a1b4c, 0x36034af6, 0x41047a60,
-    0xdf60efc3, 0xa867df55, 0x316e8eef, 0x4669be79,
-    0xcb61b38c, 0xbc66831a, 0x256fd2a0, 0x5268e236,
-    0xcc0c7795, 0xbb0b4703, 0x220216b9, 0x5505262f,
-    0xc5ba3bbe, 0xb2bd0b28, 0x2bb45a92, 0x5cb36a04,
-    0xc2d7ffa7, 0xb5d0cf31, 0x2cd99e8b, 0x5bdeae1d,
-    0x9b64c2b0, 0xec63f226, 0x756aa39c, 0x026d930a,
-    0x9c0906a9, 0xeb0e363f, 0x72076785, 0x05005713,
-    0x95bf4a82, 0xe2b87a14, 0x7bb12bae, 0x0cb61b38,
-    0x92d28e9b, 0xe5d5be0d, 0x7cdcefb7, 0x0bdbdf21,
-    0x86d3d2d4, 0xf1d4e242, 0x68ddb3f8, 0x1fda836e,
-    0x81be16cd, 0xf6b9265b, 0x6fb077e1, 0x18b74777,
-    0x88085ae6, 0xff0f6a70, 0x66063bca, 0x11010b5c,
-    0x8f659eff, 0xf862ae69, 0x616bffd3, 0x166ccf45,
-    0xa00ae278, 0xd70dd2ee, 0x4e048354, 0x3903b3c2,
-    0xa7672661, 0xd06016f7, 0x4969474d, 0x3e6e77db,
-    0xaed16a4a, 0xd9d65adc, 0x40df0b66, 0x37d83bf0,
-    0xa9bcae53, 0xdebb9ec5, 0x47b2cf7f, 0x30b5ffe9,
-    0xbdbdf21c, 0xcabac28a, 0x53b39330, 0x24b4a3a6,
-    0xbad03605, 0xcdd70693, 0x54de5729, 0x23d967bf,
-    0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94,
-    0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d
-};
-
-void hdlcInit(struct ts_client *p_client) {
-    p_client->hdlcContext.recvFrameSize = 0;
-    p_client->hdlcContext.sendFrameSize = 0;
-    p_client->hdlcContext.recvEscape = false;
-    p_client->hdlcContext.firstFrameSent = false;
-    p_client->hdlcContext.acfcEnabled = false;
-    p_client->hdlcContext.accm = 0xffffffff;
-
-    pppInit(p_client);
+void hdlcInit(
+    struct ts_hdlcContext *p_context,
+    tf_pppSendHandler *p_sendHandler,
+    void *p_sendHandlerArg,
+    tf_pppReceiveHandler *p_receiveHandler,
+    void *p_receiveHandlerArg
+) {
+    p_context->receiveBufferIndex = 0;
+    p_context->sendBufferIndex = 0;
+    p_context->sendHandler = p_sendHandler;
+    p_context->sendHandlerArg = p_sendHandlerArg;
+    p_context->receiveHandler = p_receiveHandler;
+    p_context->receiveHandlerArg = p_receiveHandlerArg;
+    p_context->receiveEscape = false;
+    p_context->accm = 0xffffffff;
 }
 
-void hdlcReceive(struct ts_client *p_client, uint8_t p_byte) {
-    if(p_client->hdlcContext.recvFrameSize == 0) {
-        if(p_byte == 0x7e) {
-            p_client->hdlcContext.recvFrameBuffer[0] = 0x7e;
-            p_client->hdlcContext.recvFrameSize = 1;
-        }
-    } else {
-        if(p_byte == 0x7d) {
-            p_client->hdlcContext.recvEscape = true;
-        } else if(p_byte == 0x7e) {
-            if(p_client->hdlcContext.recvEscape) {
-                hdlcDiscardFrame(p_client);
-            } else {
-                if(p_client->hdlcContext.recvFrameSize < C_HDLC_MAX_FRAME_SIZE) {
-                    p_client->hdlcContext.recvFrameBuffer[
-                        p_client->hdlcContext.recvFrameSize++
-                    ] = 0x7e;
+void hdlcReceive(
+    void *p_arg,
+    const void *p_buffer,
+    size_t p_size
+) {
+    struct ts_hdlcContext *l_context = (struct ts_hdlcContext *)p_arg;
+    const uint8_t *l_buffer = (const uint8_t *)p_buffer;
 
-                    hdlcReceiveFrame(p_client);
-                } else {
-                    hdlcDiscardFrame(p_client);
-                }
-            }
-        } else {
-            if(p_client->hdlcContext.recvEscape) {
-                p_client->hdlcContext.recvEscape = false;
-                p_byte ^= 0x20;
-            }
-
-            if(p_client->hdlcContext.recvFrameSize < C_HDLC_MAX_FRAME_SIZE) {
-                p_client->hdlcContext.recvFrameBuffer[
-                    p_client->hdlcContext.recvFrameSize++
-                ] = p_byte;
-            }
-        }
+    for(size_t l_index = 0; l_index < p_size; l_index++) {
+        hdlcReceiveByte(l_context, l_buffer[l_index]);
     }
 }
 
 void hdlcSend(
-    struct ts_client *p_client,
-    const uint8_t *p_buffer,
+    void *p_arg,
+    const void *p_buffer,
     size_t p_size
 ) {
-    p_client->hdlcContext.sendFrameSize = 0;
+    struct ts_hdlcContext *l_context = (struct ts_hdlcContext *)p_arg;
+    const uint8_t *l_inputBuffer = (const uint8_t *)p_buffer;
 
-    // Reset FCS
-    if(p_client->hdlcContext.fcs32Enabled) {
-        p_client->hdlcContext.sendFcs = C_PPP_FCS32_INIT;
-    } else {
-        p_client->hdlcContext.sendFcs = C_PPP_FCS16_INIT;
+    // Create packet
+    uint8_t l_buffer[p_size + C_HDLC_OVERHEAD];
+
+    l_buffer[0] = 0x7e;
+    l_buffer[1] = 0xff;
+    l_buffer[2] = 0x03;
+
+    memcpy(&l_buffer[3], p_buffer, p_size);
+
+    const uint16_t l_fcs = hdlcComputeFcs16(&l_buffer[1], p_size + 2);
+
+    l_buffer[p_size + 3] = l_fcs;
+    l_buffer[p_size + 4] = l_fcs >> 8;
+    l_buffer[p_size + 5] = 0x7e;
+
+    // Convert packet to serial form
+    uint8_t l_outputBuffer[(p_size + C_HDLC_OVERHEAD) * 2];
+    size_t l_outputBufferIndex = 1;
+
+    l_outputBuffer[0] = 0x7e;
+
+    for(size_t l_bufferIndex = 1; l_bufferIndex < p_size + 5; l_bufferIndex++) {
+        const uint8_t l_byte = l_buffer[l_bufferIndex];
+
+        if(
+            ((l_byte < 0x20) && ((l_context->accm & (1 << l_byte)) != 0))
+            || (l_byte == 0x7d)
+            || (l_byte == 0x7e)
+        ) {
+            l_outputBuffer[l_outputBufferIndex++] = 0x7d;
+            l_outputBuffer[l_outputBufferIndex++] = l_byte ^ 0x20;
+        } else {
+            l_outputBuffer[l_outputBufferIndex++] = l_byte;
+        }
     }
 
-    // Start with a flag
-    if(!p_client->hdlcContext.firstFrameSent) {
-        p_client->hdlcContext.firstFrameSent = true;
-        p_client->hdlcContext.sendFrameBuffer[
-            p_client->hdlcContext.sendFrameSize++
-        ] = 0x7e;
-    }
+    l_outputBuffer[l_outputBufferIndex++] = 0x7e;
 
-    // Append address and control fields
-    if(!p_client->hdlcContext.acfcEnabled) {
-        hdlcSendAppend(p_client, 0xff);
-        hdlcSendAppend(p_client, 0x03);
-    }
-
-    // Append PPP frame
-    for(size_t l_bufferIndex = 0; l_bufferIndex < p_size; l_bufferIndex++) {
-        hdlcSendAppend(p_client, p_buffer[l_bufferIndex]);
-    }
-
-    // Append FCS
-    hdlcSendAppendFcs(p_client);
-
-    // Append flag
-    p_client->hdlcContext.sendFrameBuffer[
-        p_client->hdlcContext.sendFrameSize++
-    ] = 0x7e;
-
-    // Send
-    hayesSend(
-        p_client,
-        p_client->hdlcContext.sendFrameBuffer,
-        p_client->hdlcContext.sendFrameSize
+    l_context->sendHandler(
+        l_context->sendHandlerArg,
+        l_outputBuffer,
+        l_outputBufferIndex
     );
 }
 
-void hdlcSetAcfcEnabled(struct ts_client *p_client, bool p_acfcEnabled) {
-    p_client->hdlcContext.acfcEnabled = p_acfcEnabled;
-}
-
-static inline void hdlcSendAppend(struct ts_client *p_client, uint8_t p_byte) {
-    hdlcSendAppendNoFcs(p_client, p_byte);
-
-    if(p_client->hdlcContext.fcs32Enabled) {
-        p_client->hdlcContext.sendFcs = (p_client->hdlcContext.sendFcs >> 8)
-            ^ s_fcs32Table[(p_client->hdlcContext.sendFcs ^ p_byte) & 0xff];
-    } else {
-        p_client->hdlcContext.sendFcs = (p_client->hdlcContext.sendFcs >> 8)
-            ^ s_fcs16Table[(p_client->hdlcContext.sendFcs ^ p_byte) & 0xff];
-    }
-}
-
-static inline void hdlcSendAppendNoFcs(
-    struct ts_client *p_client,
+static inline void hdlcReceiveByte(
+    struct ts_hdlcContext *p_context,
     uint8_t p_byte
 ) {
-    bool l_escape =
-        p_byte == 0x7d
-        || p_byte == 0x7e
-        || (p_byte < 0x20 && ((1 << p_byte) & p_client->hdlcContext.accm) != 0);
+    if(p_byte == 0x7e) {
+        if(p_context->receiveBufferIndex == 0) {
+            p_context->receiveBuffer[0] = 0x7e;
+            p_context->receiveBufferIndex = 1;
+        } else if(p_context->receiveBufferIndex != 1) {
+            p_context->receiveBuffer[p_context->receiveBufferIndex++] = 0x7e;
+            hdlcReceiveFrame(p_context);
+        }
+    } else if(p_byte == 0x7d) {
+        p_context->receiveEscape = true;
+    } else {
+        uint8_t l_byte;
 
-    if(l_escape) {
-        p_client->hdlcContext.sendFrameBuffer[
-            p_client->hdlcContext.sendFrameSize++
-        ] = 0x7d;
+        if(p_context->receiveEscape) {
+            p_context->receiveEscape = false;
+            l_byte = p_byte ^ 0x20;
+        } else {
+            l_byte = p_byte;
+        }
 
-        p_byte ^= 0x20;
-    }
+        if(p_context->receiveBufferIndex == C_HDLC_MAX_FRAME_SIZE - 1) {
+            return;
+        }
 
-    p_client->hdlcContext.sendFrameBuffer[
-        p_client->hdlcContext.sendFrameSize++
-    ] = p_byte;
-}
-
-static inline void hdlcSendAppendFcs(struct ts_client *p_client) {
-    uint32_t l_fcs = ~p_client->hdlcContext.sendFcs;
-
-    hdlcSendAppend(p_client, l_fcs);
-    l_fcs >>= 8;
-    hdlcSendAppend(p_client, l_fcs);
-
-    if(p_client->hdlcContext.fcs32Enabled) {
-        l_fcs >>= 8;
-        hdlcSendAppend(p_client, l_fcs);
-        l_fcs >>= 8;
-        hdlcSendAppend(p_client, l_fcs);
+        p_context->receiveBuffer[p_context->receiveBufferIndex++] = l_byte;
     }
 }
 
-static void hdlcDiscardFrame(struct ts_client *p_client) {
-    p_client->hdlcContext.recvFrameSize = 1;
-    p_client->hdlcContext.recvEscape = false;
-}
-
-static void hdlcReceiveFrame(struct ts_client *p_client) {
-    uint_fast16_t l_hdlcOverhead = 6;
-    uint_fast16_t l_pppFrameStart = 3;
-
-    if(p_client->hdlcContext.fcs32Enabled) {
-        l_hdlcOverhead += 2;
-    }
-
+static inline void hdlcReceiveFrame(struct ts_hdlcContext *p_context) {
+    // Check address and command fields
     if(
-        p_client->hdlcContext.acfcEnabled
-        && (
-            p_client->hdlcContext.recvFrameBuffer[1] != 0xff
-            || p_client->hdlcContext.recvFrameBuffer[2] != 0x03
-        )
+        (p_context->receiveBuffer[1] != 0xff)
+        || (p_context->receiveBuffer[2] != 0x03)
     ) {
-        l_hdlcOverhead -= 2;
-        l_pppFrameStart = 1;
-    }
-
-    if(p_client->hdlcContext.recvFrameSize < l_hdlcOverhead) {
-        p_client->hdlcContext.recvFrameSize = 1;
-        p_client->hdlcContext.recvEscape = false;
+        hdlcDiscardFrame(p_context);
         return;
     }
 
     // Check FCS
-    uint32_t l_actualFcs;
-    uint32_t l_computedFcs;
-    size_t l_pppFrameSize =
-        p_client->hdlcContext.recvFrameSize - l_hdlcOverhead;
+    const uint16_t l_actualFcs =
+        (p_context->receiveBuffer[p_context->receiveBufferIndex - 2] << 8)
+        | p_context->receiveBuffer[p_context->receiveBufferIndex - 3];
 
-    if(p_client->hdlcContext.fcs32Enabled) {
-        l_actualFcs = *(uint32_t *)&p_client->hdlcContext.recvFrameBuffer[
-            p_client->hdlcContext.recvFrameSize - 5
-        ];
+    const uint16_t l_computedFcs = hdlcComputeFcs16(
+        &p_context->receiveBuffer[1],
+        p_context->receiveBufferIndex - 4
+    );
 
-        l_computedFcs = hdlcComputeFcs32(
-            &p_client->hdlcContext.recvFrameBuffer[1],
-            p_client->hdlcContext.recvFrameSize - 6
-        );
-    } else {
-        l_actualFcs = *(uint16_t *)&p_client->hdlcContext.recvFrameBuffer[
-            p_client->hdlcContext.recvFrameSize - 3
-        ];
-
-        l_computedFcs = hdlcComputeFcs16(
-            &p_client->hdlcContext.recvFrameBuffer[1],
-            p_client->hdlcContext.recvFrameSize - 4
-        );
+    if(l_actualFcs != l_computedFcs) {
+        hdlcDiscardFrame(p_context);
+        return;
     }
 
-    if(l_computedFcs == l_actualFcs) {
-        pppReceive(
-            p_client,
-            &p_client->hdlcContext.recvFrameBuffer[l_pppFrameStart],
-            l_pppFrameSize
-        );
-    }
+    // Call received frame handler
+    p_context->receiveHandler(
+        p_context->receiveHandlerArg,
+        &p_context->receiveBuffer[3],
+        p_context->receiveBufferIndex - C_HDLC_OVERHEAD
+    );
 
-    p_client->hdlcContext.recvFrameSize = 1;
+    // Reset the state of the buffer
+    hdlcDiscardFrame(p_context);
+}
+
+static inline void hdlcDiscardFrame(struct ts_hdlcContext *p_context) {
+    p_context->receiveBufferIndex = 1;
+    p_context->receiveEscape = false;
 }
 
 static uint16_t hdlcComputeFcs16(const uint8_t *p_buffer, size_t p_size) {
@@ -345,17 +214,6 @@ static uint16_t hdlcComputeFcs16(const uint8_t *p_buffer, size_t p_size) {
     for(size_t l_bufferIndex = 0; l_bufferIndex < p_size; l_bufferIndex++) {
         l_fcs = (l_fcs >> 8)
             ^ s_fcs16Table[(l_fcs ^ p_buffer[l_bufferIndex]) & 0xff];
-    }
-
-    return ~l_fcs;
-}
-
-static uint32_t hdlcComputeFcs32(const uint8_t *p_buffer, size_t p_size) {
-    uint32_t l_fcs = C_PPP_FCS32_INIT;
-
-    for(size_t l_bufferIndex = 0; l_bufferIndex < p_size; l_bufferIndex++) {
-        l_fcs = (l_fcs >> 8)
-            ^ s_fcs32Table[(l_fcs ^ p_buffer[l_bufferIndex]) & 0xff];
     }
 
     return ~l_fcs;
