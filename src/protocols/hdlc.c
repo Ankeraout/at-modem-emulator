@@ -88,7 +88,6 @@ void hdlcSend(
     size_t p_size
 ) {
     struct ts_hdlcContext *l_context = (struct ts_hdlcContext *)p_arg;
-    const uint8_t *l_inputBuffer = (const uint8_t *)p_buffer;
 
     // Create packet
     uint8_t l_buffer[p_size + C_HDLC_OVERHEAD];

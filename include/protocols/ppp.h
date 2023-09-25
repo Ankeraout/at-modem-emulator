@@ -5,6 +5,7 @@
 #include <stddef.h>
 
 #include "protocols/lcp_types.h"
+#include "list.h"
 
 #define C_PPP_MAX_MRU 1500
 #define C_PPP_OVERHEAD 2
@@ -20,6 +21,9 @@ typedef void tf_pppReceiveHandler(
     const void *p_buffer,
     size_t p_size
 );
+typedef void tf_pppUpHandler(void *p_arg);
+typedef void tf_pppDownHandler(void *p_arg);
+typedef void tf_pppNetworkHandler(void *p_arg);
 
 enum te_pppLinkState {
     E_PPPLINKSTATE_DEAD,
@@ -29,18 +33,21 @@ enum te_pppLinkState {
     E_PPPLINKSTATE_TERMINATE
 };
 
-enum te_pppProtocol {
-    E_PPPPROTOCOL_LCP
-};
-
 enum te_pppProtocolNumber {
+    E_PPPPROTOCOLNUMBER_IP = 0x0021,
+    E_PPPPROTOCOLNUMBER_IPV6 = 0x0057,
+    E_PPPPROTOCOLNUMBER_IPCP = 0x8021,
+    E_PPPPROTOCOLNUMBER_IPV6CP = 0x8057,
     E_PPPPROTOCOLNUMBER_LCP = 0xc021
 };
 
 struct ts_pppProtocolHandler {
-    bool enabled;
+    enum te_pppProtocolNumber protocolNumber;
     tf_pppReceiveHandler *receiveHandler;
-    void *receiveHandlerArg;
+    tf_pppUpHandler *up;
+    tf_pppDownHandler *down;
+    tf_pppNetworkHandler *network;
+    void *arg;
 };
 
 struct ts_pppConfiguration {
@@ -49,13 +56,18 @@ struct ts_pppConfiguration {
 };
 
 struct ts_pppContext {
+    // PPP attributes
     enum te_pppLinkState linkState;
     tf_pppSendHandler *sendHandler;
     void *sendHandlerArg;
-    struct ts_pppProtocolHandler lcpHandler;
     uint16_t mru;
     uint32_t magicNumber;
+
+    // Protocol contexts
     struct ts_lcpContext lcpContext;
+
+    // Protocol handlers
+    struct ts_listElement *protocolHandlers;
 };
 
 void pppInit(
@@ -65,9 +77,7 @@ void pppInit(
 );
 void pppRegisterProtocol(
     struct ts_pppContext *p_context,
-    enum te_pppProtocol p_protocol,
-    tf_pppReceiveHandler *p_receiveHandler,
-    void *p_receiveHandlerArg
+    struct ts_pppProtocolHandler *p_protocolHandler
 );
 void pppUp(struct ts_pppContext *p_context);
 void pppDown(struct ts_pppContext *p_context);
@@ -78,5 +88,6 @@ void pppSend(
     const void *p_buffer,
     size_t p_size
 );
+void pppNetwork(struct ts_pppContext *p_context);
 
 #endif

@@ -6,6 +6,7 @@
 
 #include <arpa/inet.h>
 
+#include "common.h"
 #include "protocols/ppp.h"
 
 #define C_LCP_OVERHEAD sizeof(struct ts_lcpPacketHeader)
@@ -292,12 +293,12 @@ static void lcpReceiveConfigureRequest(
     const struct ts_lcpPacket *p_packet,
     size_t p_size
 ) {
-    size_t l_optionOffset = 0;
+    int l_optionOffset = 0;
     struct ts_lcpConfigurationContext l_configurationContext;
 
     lcpInitializeConfigurationContext(&l_configurationContext, p_packet);
 
-    while(l_optionOffset < ntohs(p_packet->header.length) - 4) {
+    while(l_optionOffset < (int)p_size) {
         const struct ts_lcpOption *l_option =
             (const struct ts_lcpOption *)&p_packet->data[l_optionOffset];
 
@@ -374,6 +375,9 @@ static void lcpReceiveConfigureAck(
     const struct ts_lcpPacket *p_packet,
     size_t p_size
 ) {
+    M_UNUSED_PARAMETER(p_packet);
+    M_UNUSED_PARAMETER(p_size);
+
     p_context->lcpContext.ackReceived = true;
     lcpCheckLinkEstablished(p_context);
 }
@@ -383,6 +387,10 @@ static void lcpReceiveConfigureNak(
     const struct ts_lcpPacket *p_packet,
     size_t p_size
 ) {
+    M_UNUSED_PARAMETER(p_context);
+    M_UNUSED_PARAMETER(p_packet);
+    M_UNUSED_PARAMETER(p_size);
+
     // TODO
 }
 
@@ -391,6 +399,10 @@ static void lcpReceiveConfigureReject(
     const struct ts_lcpPacket *p_packet,
     size_t p_size
 ) {
+    M_UNUSED_PARAMETER(p_context);
+    M_UNUSED_PARAMETER(p_packet);
+    M_UNUSED_PARAMETER(p_size);
+
     // TODO
 }
 
@@ -399,6 +411,9 @@ static void lcpReceiveTerminateRequest(
     const struct ts_lcpPacket *p_packet,
     size_t p_size
 ) {
+    M_UNUSED_PARAMETER(p_packet);
+    M_UNUSED_PARAMETER(p_size);
+
     struct ts_lcpPacketHeader l_lcpPacket;
 
     l_lcpPacket.code = E_LCP_CODE_TERMINATE_ACK;
@@ -415,6 +430,10 @@ static void lcpReceiveTerminateAck(
     const struct ts_lcpPacket *p_packet,
     size_t p_size
 ) {
+    M_UNUSED_PARAMETER(p_context);
+    M_UNUSED_PARAMETER(p_packet);
+    M_UNUSED_PARAMETER(p_size);
+
     // Do nothing
 }
 
@@ -423,6 +442,10 @@ static void lcpReceiveCodeReject(
     const struct ts_lcpPacket *p_packet,
     size_t p_size
 ) {
+    M_UNUSED_PARAMETER(p_context);
+    M_UNUSED_PARAMETER(p_packet);
+    M_UNUSED_PARAMETER(p_size);
+
     // Do nothing
 }
 
@@ -431,6 +454,10 @@ static void lcpReceiveProtocolReject(
     const struct ts_lcpPacket *p_packet,
     size_t p_size
 ) {
+    M_UNUSED_PARAMETER(p_context);
+    M_UNUSED_PARAMETER(p_packet);
+    M_UNUSED_PARAMETER(p_size);
+
     // TODO: deactivate protocol
 }
 
@@ -466,6 +493,10 @@ static void lcpReceiveEchoReply(
     const struct ts_lcpPacket *p_packet,
     size_t p_size
 ) {
+    M_UNUSED_PARAMETER(p_context);
+    M_UNUSED_PARAMETER(p_packet);
+    M_UNUSED_PARAMETER(p_size);
+
     // Do nothing
 }
 
@@ -474,6 +505,10 @@ static void lcpReceiveDiscardRequest(
     const struct ts_lcpPacket *p_packet,
     size_t p_size
 ) {
+    M_UNUSED_PARAMETER(p_context);
+    M_UNUSED_PARAMETER(p_packet);
+    M_UNUSED_PARAMETER(p_size);
+
     // Do nothing
 }
 
@@ -521,7 +556,7 @@ static void lcpSendConfigureRequest(struct ts_pppContext *p_context) {
 
 static void lcpCheckLinkEstablished(struct ts_pppContext *p_context) {
     if(p_context->lcpContext.ackReceived && p_context->lcpContext.ackSent) {
-        p_context->linkState = E_PPPLINKSTATE_NETWORK;
+        pppNetwork(p_context);
     }
 }
 
