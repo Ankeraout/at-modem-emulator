@@ -354,13 +354,6 @@ static void lcpReceiveConfigureRequest(
     struct ts_lcpPacket *l_packet =
         (struct ts_lcpPacket *)l_configurationContext.buffer;
 
-    // If the configuration is acknowledged, update the link establishment
-    // status.
-    if(l_packet->header.code == E_LCP_CODE_CONFIGURE_ACK) {
-        p_context->lcpContext.ackSent = true;
-        lcpCheckLinkEstablished(p_context);
-    }
-
     // Send response
     pppSend(
         p_context,
@@ -368,6 +361,13 @@ static void lcpReceiveConfigureRequest(
         l_configurationContext.buffer,
         ntohs(l_packet->header.length)
     );
+
+    // If the configuration is acknowledged, update the link establishment
+    // status.
+    if(l_packet->header.code == E_LCP_CODE_CONFIGURE_ACK) {
+        p_context->lcpContext.ackSent = true;
+        lcpCheckLinkEstablished(p_context);
+    }
 }
 
 static void lcpReceiveConfigureAck(
@@ -390,8 +390,6 @@ static void lcpReceiveConfigureNak(
     M_UNUSED_PARAMETER(p_context);
     M_UNUSED_PARAMETER(p_packet);
     M_UNUSED_PARAMETER(p_size);
-
-    // TODO
 }
 
 static void lcpReceiveConfigureReject(

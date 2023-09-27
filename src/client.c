@@ -10,6 +10,7 @@
 #include "client.h"
 #include "protocols/hayes.h"
 #include "protocols/hdlc.h"
+#include "protocols/ipcp.h"
 #include "protocols/ppp.h"
 
 #define C_CLIENT_TABLE_SIZE 64
@@ -91,6 +92,33 @@ static void *clientMain(void *p_arg) {
         &l_client->pppContext,
         hdlcSend,
         &l_client->hdlcContext
+    );
+
+    struct ts_ipcpContext l_ipcpContext;
+
+    {
+        const struct ts_ipcpConfiguration l_ipcpConfiguration = {
+            .localAddress = {192, 168, 99, 1},
+            .remoteAddress = {192, 168, 99, l_client->id + 2},
+            .dnsAddress1 = {8, 8, 8, 8},
+            .dnsAddress2 = {8, 8, 4, 4},
+            .netBiosAddress1 = {0, 0, 0, 0},
+            .netBiosAddress2 = {0, 0, 0, 0}
+        };
+
+        ipcpInit(&l_ipcpContext, &l_client->pppContext, &l_ipcpConfiguration);
+    }
+
+    struct ts_pppProtocolHandler l_ipcpProtocolHandler = {
+        .receiveHandler = (tf_pppReceiveHandler *)ipcpReceive,
+        .arg = &l_ipcpContext,
+        .network = (tf_pppNetworkHandler *)ipcpNetwork,
+        .protocolNumber = E_PPPPROTOCOLNUMBER_IPCP
+    };
+
+    pppRegisterProtocol(
+        &l_client->pppContext,
+        &l_ipcpProtocolHandler
     );
 
     while(true) {
