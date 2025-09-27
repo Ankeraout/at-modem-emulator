@@ -2,7 +2,7 @@ from modem.protocols.protocol import Protocol
 
 class HDLC(Protocol):
     FCS_16_INIT = 0xffff
-    FCS_16_GOOD = 0xf0b8
+    FCS_16_GOOD = b"\xb8\xf0"
     FCS_16_TABLE = [
         0x0000, 0x1189, 0x2312, 0x329b, 0x4624, 0x57ad, 0x6536, 0x74bf,
         0x8c48, 0x9dc1, 0xaf5a, 0xbed3, 0xca6c, 0xdbe5, 0xe97e, 0xf8f7,
@@ -39,7 +39,7 @@ class HDLC(Protocol):
     ]
 
     FCS_32_INIT = 0xffffffff
-    FCS_32_GOOD = 0xdebb20e3
+    FCS_32_GOOD = b"\xe3\x20\xbb\xde"
     FCS_32_TABLE = [
         0x00000000, 0x77073096, 0xee0e612c, 0x990951ba,
         0x076dc419, 0x706af48f, 0xe963a535, 0x9e6495a3,
@@ -198,7 +198,7 @@ class HDLC(Protocol):
     
     def _check_fcs(self, buffer: bytes) -> bool:
         if self._use_fcs_32:
-            return HDLC._fcs_32(buffer[:-4]) == buffer[-4:]
+            return HDLC._fcs_32(buffer) == HDLC.FCS_32_GOOD
     
         else:
-            return HDLC._fcs_16(buffer[:-2]) == buffer[-2:]
+            return HDLC._fcs_16(buffer) == HDLC.FCS_16_GOOD
