@@ -22,15 +22,8 @@ class Client:
     def __init__(self, client_socket: socket.socket):
         self._socket = client_socket
         self._modem = Modem()
-
-        hdlc = HDLC()
-        ppp = PPP()
-
         self._modem.set_lower_protocol(Client._ClientSendProxy(self))
-        self._modem.set_upper_protocol(hdlc)
-        hdlc.set_lower_protocol(self._modem)
-        hdlc.set_upper_protocol(ppp)
-        ppp.set_lower_protocol(hdlc)
+        self._modem.add_dial_handler(self._on_dial)
 
     def run(self) -> None:
         while True:
@@ -41,3 +34,14 @@ class Client:
 
             else:
                 self._modem.receive(buffer)
+
+    def _on_dial(self, modem: Modem) -> None:
+        hdlc = HDLC()
+        ppp = PPP()
+
+        modem.set_upper_protocol(hdlc)
+        hdlc.set_lower_protocol(modem)
+        hdlc.set_upper_protocol(ppp)
+        ppp.set_lower_protocol(hdlc)
+
+        ppp._lcp.send_configure_request()

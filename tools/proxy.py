@@ -12,7 +12,11 @@ def pipe_thread(
     print("Pipe thread started.")
 
     while True:
-        buffer = source_socket.recv(RECEIVE_BUFFER_SIZE)
+        try:
+            buffer = source_socket.recv(RECEIVE_BUFFER_SIZE)
+
+        except:
+            buffer = b""
         
         if len(buffer) == 0:
             return source_socket
@@ -25,7 +29,6 @@ def pipe_thread(
 
 def main() -> int:
     TARGET_ADDRESS=("server", 6666)
-    #TARGET_ADDRESS=("192.168.0.12", 6668)
 
     server_socket = socket.create_server(
         ("", 6667),

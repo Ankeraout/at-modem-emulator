@@ -60,6 +60,8 @@ class Modem(Protocol):
             "V": self._command_handler_V,
             "Z": self._command_handler_Z
         }
+        self._dial_handlers = set()
+        self._hang_handlers = set()
         self._reset()
 
     def receive(self, buffer: bytes) -> None:
@@ -73,6 +75,26 @@ class Modem(Protocol):
             ModemState.DATA_PLUS2
         ):
             self._send_lower_protocol(buffer)
+
+    def add_dial_handler(self, handler) -> None:
+        self._dial_handlers.add(handler)
+
+    def add_hang_handler(self, handler) -> None:
+        self._hang_handlers.add(handler)
+
+    def remove_dial_handler(self, handler) -> None:
+        self._dial_handlers.remove(handler)
+
+    def remove_hand_handler(self, handler) -> None:
+        self._hang_handlers.remove(handler)
+
+    def _fire_dial(self) -> None:
+        for handler in self._dial_handlers:
+            handler(self)
+
+    def _fire_hang(self) -> None:
+        for handler in self._hang_handlers:
+            handler(self)
 
     def _receive(self, byte: int) -> None:
         if self._echo:
@@ -153,6 +175,10 @@ class Modem(Protocol):
             if self._state == ModemState.COMMAND_AT:
                 self._state = ModemState.COMMAND
 
+        while len(self._execute_after_command) != 0:
+            self._execute_after_command[0]()
+            del self._execute_after_command[0]
+
     def _reset(self) -> None:
         self._s_register = [
             0,
@@ -173,6 +199,7 @@ class Modem(Protocol):
         self._quiet = False
         self._verbose = True
         self._connected = False
+        self._execute_after_command = []
 
     def _send_response(self, response_code: ModemReturnCode) -> None:
         if not self._quiet:
@@ -215,12 +242,22 @@ class Modem(Protocol):
         
         if self._peek_character() == ";":
             self._advance()
+            go_to_data_state = False
 
         else:
-            self._state = ModemState.DATA
+            go_to_data_state = True
 
-        self._connected = True
-        self._command_response = ModemReturnCode.CONNECT_1200
+        if self._connected:
+            self._command_response = ModemReturnCode.ERROR
+
+        else:
+            if go_to_data_state:
+                self._state = ModemState.DATA
+
+            self._connected = True
+            self._command_response = ModemReturnCode.CONNECT_1200
+
+            self._execute_after_command.append(self._fire_dial)
 
     def _command_handler_E(self) -> None:
         parameter = self._peek_character()
@@ -235,6 +272,7 @@ class Modem(Protocol):
 
         elif self._connected:
             self._connected = False
+            self._fire_hang()
 
     def _command_handler_I(self) -> None:
         parameter = self._peek_character()

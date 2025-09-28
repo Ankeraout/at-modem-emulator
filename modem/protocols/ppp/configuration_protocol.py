@@ -83,17 +83,19 @@ class ConfigurationProtocol(Protocol):
 
     def send_configure_request(self) -> None:
         data = bytearray()
-        options = { code: option for code, option in self._options if code not in self._rejected_options }
+        options = { code: option for code, option in self._options.items() if code not in self._rejected_options }
 
-        for option in options:
-            data.append(option.to_bytes())
+        for option in options.values():
+            data.extend(option.to_bytes())
 
-        return struct.pack(
-            ">BBH",
-            ConfigurationProtocolCode.CONFIGURE_REQUEST.value,
-            self._configure_request_identifier,
-            len(data) + 4
-        ) + bytes(data)
+        self._send_lower_protocol(
+            struct.pack(
+                ">BBH",
+                ConfigurationProtocolCode.CONFIGURE_REQUEST.value,
+                self._configure_request_identifier,
+                len(data) + 4
+            ) + bytes(data)
+        )
 
     def _send_code_reject(
         self,
