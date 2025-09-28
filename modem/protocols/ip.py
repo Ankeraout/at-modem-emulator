@@ -1,6 +1,6 @@
 from modem.protocols.protocol import Protocol
 
-class IPV4(Protocol):
+class IP(Protocol):
     def __init__(self) -> None:
         super().__init__()
 

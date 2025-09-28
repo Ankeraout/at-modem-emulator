@@ -55,10 +55,12 @@ class ConfigurationProtocol(Protocol):
             ConfigurationProtocolCode.TERMINATE_ACK.value:
                 self._code_handler_terminate_ack,
             ConfigurationProtocolCode.CODE_REJECT.value:
-                self._code_handler_code_reject,
+                self._code_handler_code_reject
         }
         self._options: dict[int, Option] = {}
         self._rejected_options: dict[int, Option] = {}
+        self._configuration_acknowledged_handlers = set()
+        self.reset()
 
     def receive(self, buffer: bytes) -> None:
         code = buffer[0]
@@ -81,7 +83,12 @@ class ConfigurationProtocol(Protocol):
         for option in self._options:
             option.reset()
 
+        self._configure_ack_received = False
+        self._configure_ack_sent = False
+
     def send_configure_request(self) -> None:
+        self._configure_ack_received = False
+
         data = bytearray()
         options = { code: option for code, option in self._options.items() if code not in self._rejected_options }
 
@@ -96,6 +103,12 @@ class ConfigurationProtocol(Protocol):
                 len(data) + 4
             ) + bytes(data)
         )
+
+    def add_configuration_acknowledged_handler(self, handler) -> None:
+        self._configuration_acknowledged_handlers.add(handler)
+
+    def remove_configuration_acknowledged_handler(self, handler) -> None:
+        self._configuration_acknowledged_handlers.remove(handler)
 
     def _send_code_reject(
         self,
@@ -198,6 +211,7 @@ class ConfigurationProtocol(Protocol):
         else:
             result_code = ConfigurationProtocolCode.CONFIGURE_ACK
             result_options = ack
+            self._acknowledge_remote_configuration()
         
         data = option_data_to_bytes(result_options)
         self._send_lower_protocol(
@@ -208,6 +222,24 @@ class ConfigurationProtocol(Protocol):
                 len(data) + 4
             ) + data
         )
+
+    def _acknowledge_remote_configuration(self) -> None:
+        if not self._configure_ack_sent:
+            self._configure_ack_sent = True
+            self._check_configuration_acknowledged()
+        
+    def _acknowledge_local_configuration(self) -> None:
+        if not self._configure_ack_received:
+            self._configure_ack_received = True
+            self._check_configuration_acknowledged()
+        
+    def _check_configuration_acknowledged(self) -> None:
+        if self._configure_ack_received and self._configure_ack_sent:
+            self._fire_configuration_acknowledged()
+    
+    def _fire_configuration_acknowledged(self) -> None:
+        for handler in self._configuration_acknowledged_handlers:
+            handler()
 
     def _code_handler_configure_ack(self, identifier: int, data: bytes) -> None:
         option_data = self._decode_options(data)
@@ -220,7 +252,14 @@ class ConfigurationProtocol(Protocol):
         for option in option_data:
             option["option"].on_configure_ack()
 
+        self._acknowledge_local_configuration()
+
     def _code_handler_configure_nak(self, identifier: int, data: bytes) -> None:
+        option_data = self._decode_options(data)
+
+        if any(option["option"] is None for option in option_data):
+            return
+
         self.send_configure_request()
 
     def _code_handler_configure_reject(

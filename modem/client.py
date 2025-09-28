@@ -44,4 +44,4 @@ class Client:
         hdlc.set_upper_protocol(ppp)
         ppp.set_lower_protocol(hdlc)
 
-        ppp._lcp.send_configure_request()
+        ppp.begin_configuration()
