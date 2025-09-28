@@ -132,7 +132,7 @@ class HDLC(Protocol):
         self._reading = False
         self._writing = False
         self._escape = False
-        self._accm = 256 * [False]
+        self._accm = 32 * [True] + 224 * [False]
         self._use_fcs_32 = False
         self._frame_too_long = False
         self._fcs_error_count = 0
@@ -142,11 +142,21 @@ class HDLC(Protocol):
         for byte in buffer:
             self._receive(byte)
 
+    def _write_packet_bytes(self, packet: bytearray, buffer: bytes) -> None:
+        for byte in buffer:
+            if self._accm[byte] or byte in (0x7d, 0x7e):
+                packet.append(0x7d)
+                packet.append(byte ^ 0x20)
+            
+            else:
+                packet.append(byte)
+
     def send(self, buffer: bytes, upper_protocol: Protocol = None) -> None:
         packet = bytearray()
-        
+        packet_link = bytearray()
+
         if not self._writing:
-            packet.append(0x7e)
+            packet_link.append(0x7e)
             self._writing = True
 
         if not self._acfc:
@@ -155,9 +165,12 @@ class HDLC(Protocol):
         packet.extend(buffer)
         packet_bytes = bytes(packet)
 
-        self._send_lower_protocol(
-            packet_bytes + self._get_fcs(packet_bytes) + b"\x7e"
+        self._write_packet_bytes(
+            packet_link,
+            packet + self._get_fcs(packet_bytes)
         )
+
+        self._send_lower_protocol(packet_link + b"\x7e")
 
     def _receive(self, byte: int) -> None:
         if not self._reading:

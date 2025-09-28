@@ -34,4 +34,10 @@ class Client:
 
     def run(self) -> None:
         while True:
-            self._modem.receive(self._socket.recv(1500))
+            buffer = self._socket.recv(1500)
+
+            if len(buffer) == 0:
+                break
+
+            else:
+                self._modem.receive(buffer)
