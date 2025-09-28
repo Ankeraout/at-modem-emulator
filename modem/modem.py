@@ -66,7 +66,7 @@ class Modem(Protocol):
         for byte in buffer:
             self._receive(byte)
 
-    def send(self, buffer: bytes) -> None:
+    def send(self, buffer: bytes, upper_protocol: Protocol = None) -> None:
         if self._state in (
             ModemState.DATA,
             ModemState.DATA_PLUS1,

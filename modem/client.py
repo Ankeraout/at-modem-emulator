@@ -12,7 +12,11 @@ class Client:
         def receive(self, buffer: bytes) -> None:
             pass
 
-        def send(self, buffer: bytes) -> None:
+        def send(
+            self,
+            buffer: bytes,
+            upper_protocol: "Protocol" = None
+        ) -> None:
             self._client._socket.send(buffer)
 
     def __init__(self, client_socket: socket.socket):

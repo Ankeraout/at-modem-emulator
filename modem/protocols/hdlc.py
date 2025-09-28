@@ -114,7 +114,7 @@ class HDLC(Protocol):
         for byte in buffer:
             fcs = (fcs >> 8) ^ HDLC.FCS_16_TABLE[(fcs ^ byte) & 0xff]
         
-        return fcs.to_bytes(2, "little")
+        return (~fcs & 0xffff).to_bytes(2, "little")
 
     @staticmethod
     def _fcs_32(buffer: bytes) -> bytes:
@@ -123,13 +123,14 @@ class HDLC(Protocol):
         for byte in buffer:
             fcs = (fcs >> 8) ^ HDLC.FCS_32_TABLE[(fcs ^ byte) & 0xff]
 
-        return fcs.to_bytes(4, "little")
+        return (~fcs & 0xffffffff).to_bytes(4, "little")
 
     def __init__(self) -> None:
         super().__init__()
         self._buffer = bytearray(1500)
         self._buffer_length = 0
         self._reading = False
+        self._writing = False
         self._escape = False
         self._accm = 256 * [False]
         self._use_fcs_32 = False
@@ -141,8 +142,22 @@ class HDLC(Protocol):
         for byte in buffer:
             self._receive(byte)
 
-    def send(self, buffer: bytes) -> None:
-        pass
+    def send(self, buffer: bytes, upper_protocol: Protocol = None) -> None:
+        packet = bytearray()
+        
+        if not self._writing:
+            packet.append(0x7e)
+            self._writing = True
+
+        if not self._acfc:
+            packet.extend(b"\xff\x03")
+        
+        packet.extend(buffer)
+        packet_bytes = bytes(packet)
+
+        self._send_lower_protocol(
+            packet_bytes + self._get_fcs(packet_bytes) + b"\x7e"
+        )
 
     def _receive(self, byte: int) -> None:
         if not self._reading:
@@ -165,7 +180,7 @@ class HDLC(Protocol):
             elif byte == 0x7d:
                 self._escape = True
 
-            elif not self._accm[byte]:
+            else:
                 if self._escape:
                     byte ^= 0x20
                     self._escape = False
@@ -198,7 +213,14 @@ class HDLC(Protocol):
     
     def _check_fcs(self, buffer: bytes) -> bool:
         if self._use_fcs_32:
-            return HDLC._fcs_32(buffer) == HDLC.FCS_32_GOOD
+            return HDLC._fcs_32(buffer[:-4]) == buffer[-4:]
     
         else:
-            return HDLC._fcs_16(buffer) == HDLC.FCS_16_GOOD
+            return HDLC._fcs_16(buffer[:-2]) == buffer[-2:]
+        
+    def _get_fcs(self, buffer: bytes) -> bytes:
+        if self._use_fcs_32:
+            return HDLC._fcs_32(buffer)
+        
+        else:
+            return HDLC._fcs_16(buffer)
