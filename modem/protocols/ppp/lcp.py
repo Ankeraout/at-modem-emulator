@@ -27,14 +27,23 @@ class OptionMRU(Option):
         else:
             return False
 
-    def on_configure_ack(self) -> None:
-        print("PPP MRU set to {:d} bytes.".format(self._value))
-        self._protocol._lower_protocol._mru = self._value
+    def on_configure_ack(self, data: bytes) -> bool:
+        if len(data) != 2:
+            return False
+        
+        value = int.from_bytes(data)
+
+        if value == self._value:
+            self._protocol._lower_protocol._mru = self._value
+            return True
+        
+        else:
+            return False
 
     def reset(self) -> None:
         self._value = 1500
 
-    def to_bytes(self) -> bytes:
+    def to_bytes(self, remote: bool = False) -> bytes:
         return b"\x01\x04" + self._value.to_bytes(2)
     
 class OptionACCM(Option):
@@ -52,16 +61,29 @@ class OptionACCM(Option):
 
         return True
     
-    def on_configure_ack(self) -> None:
-        hdlc = self._protocol._lower_protocol._lower_protocol
+    def on_configure_ack(self, data: bytes) -> bool:
+        if len(data) != 4:
+            return False
+        
+        value = int.from_bytes(data)
 
-        for i in range(32):
-            hdlc._accm[i] = self._value[i]
+        uncompacted_value = [(value & (1 << i)) != 0 for i in range(32)]
+
+        if uncompacted_value == self._value:
+            hdlc = self._protocol._lower_protocol._lower_protocol
+
+            for i in range(32):
+                hdlc._accm[i] = self._value[i]
+
+            return True
+        
+        else:
+            return False
 
     def reset(self) -> None:
         self._value = 32 * [False]
 
-    def to_bytes(self):
+    def to_bytes(self, remote: bool = False):
         value = 0
 
         for i in range(32):
@@ -82,16 +104,21 @@ class OptionMagicNumber(Option):
         self._remote = int.from_bytes(data)
 
         return True
+
+    def on_configure_ack(self, data: bytes) -> bool:
+        if len(data) != 4:
+            return False
     
-    def on_configure_ack(self) -> None:
-        pass
+        return int.from_bytes(data) == self._local
 
     def reset(self) -> None:
         self._local = random.randint(0, 2 ** 32)
         self._remote = 0
 
-    def to_bytes(self):
-        return b"\x05\x06" + self._local.to_bytes(4)
+    def to_bytes(self, remote: bool = False):
+        return b"\x05\x06" + (
+            self._remote if remote else self._local
+        ).to_bytes(4)
     
 class OptionPFC(Option):
     def __init__(self, protocol: "LCP") -> None:
@@ -101,13 +128,15 @@ class OptionPFC(Option):
     def on_configure_request(self, data: bytes) -> bool:
         return len(data) == 0
     
-    def on_configure_ack(self) -> None:
+    def on_configure_ack(self, data: bytes) -> bool:
+        if len(data) != 0:
+            return False
+
         self._protocol._lower_protocol._pfc = True
 
-    def reset(self) -> None:
-        pass
+        return True
 
-    def to_bytes(self):
+    def to_bytes(self, remote: bool = False):
         return b"\x07\x02"
     
 class OptionACFC(Option):
@@ -118,13 +147,15 @@ class OptionACFC(Option):
     def on_configure_request(self, data: bytes) -> bool:
         return len(data) == 0
     
-    def on_configure_ack(self) -> None:
+    def on_configure_ack(self, data: bytes) -> bool:
+        if len(data) != 0:
+            return False
+
         self._protocol._lower_protocol._lower_protocol._acfc = True
 
-    def reset(self) -> None:
-        pass
+        return True
 
-    def to_bytes(self):
+    def to_bytes(self, remote: bool = False):
         return b"\x08\x02"
 
 class LCP(ConfigurationProtocol):

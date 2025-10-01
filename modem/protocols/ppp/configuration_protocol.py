@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 import struct
 from enum import Enum
 from modem.protocols.protocol import Protocol
+import time
+import threading
 
 class ConfigurationProtocolCode(Enum):
     CONFIGURE_REQUEST = 1
@@ -24,23 +26,35 @@ class Option(ABC):
         """
         pass
 
-    @abstractmethod
-    def on_configure_ack(self) -> None:
-        pass
+    def on_configure_ack(self, data: bytes) -> bool:
+        """
+        Returns a boolean that indicates whether the acknowledged option is
+        good (True) or not (False).
+        """
+        return True
 
-    @abstractmethod
+    def on_configure_nak(self, data: bytes) -> bool:
+        """
+        Returns a boolean that indicates whether the negociation shall be
+        terminated (True) or not (False).
+        """
+        return False
+
     def reset(self) -> None:
         pass
 
     @abstractmethod
-    def to_bytes(self) -> bytes:
+    def to_bytes(self, remote: bool = False) -> bytes:
+        """
+        The "remote" parameter indicates whether the bytes to obtain are for the
+        remote or the local configuration. This is useful for options that
+        need different parameters on both ends, for example IPCP IP-Address.
+        """
         pass
 
 class ConfigurationProtocol(Protocol):
     def __init__(self) -> None:
         super().__init__()
-        self._code_reject_identifier = 0
-        self._configure_request_identifier = 0
         self._code_handlers = {
             ConfigurationProtocolCode.CONFIGURE_REQUEST.value:
                 self._code_handler_configure_request,
@@ -60,6 +74,7 @@ class ConfigurationProtocol(Protocol):
         self._options: dict[int, Option] = {}
         self._rejected_options: dict[int, Option] = {}
         self._configuration_acknowledged_handlers = set()
+        self._restart_task_lock = threading.RLock()
         self.reset()
 
     def receive(self, buffer: bytes) -> None:
@@ -85,6 +100,18 @@ class ConfigurationProtocol(Protocol):
 
         self._configure_ack_received = False
         self._configure_ack_sent = False
+        self._code_reject_identifier = 0
+        self._configure_request_identifier = 0
+        self._terminate_request_identifier = 0
+
+        with self._restart_task_lock:
+            self._restart_task = {
+                "last-execution": 0,
+                "timeout": 3,
+                "done": False,
+                "thread": None,
+                "exited": True
+            }
 
     def send_configure_request(self) -> None:
         self._configure_ack_received = False
@@ -104,11 +131,46 @@ class ConfigurationProtocol(Protocol):
             ) + bytes(data)
         )
 
+        with self._restart_task_lock:
+            self._restart_task["last-execution"] = time.time()
+            self._restart_task["done"] = False
+
+            if self._restart_task["exited"]:
+                self._restart_task["exited"] = False
+                self._restart_task["thread"] = threading.Thread(
+                    target=self._restart_thread_main
+                )
+                self._restart_task["thread"].start()
+
     def add_configuration_acknowledged_handler(self, handler) -> None:
         self._configuration_acknowledged_handlers.add(handler)
 
     def remove_configuration_acknowledged_handler(self, handler) -> None:
         self._configuration_acknowledged_handlers.remove(handler)
+
+    def _restart_thread_main(self) -> None:
+        while True:
+            with self._restart_task_lock:
+                next_execution = (
+                    self._restart_task["last-execution"]
+                    + self._restart_task["timeout"]
+                )
+            
+            remaining_time = next_execution - time.time()
+
+            if remaining_time > 0:
+                time.sleep(remaining_time)
+
+            with self._restart_task_lock:
+                if self._restart_task["done"]:
+                    break
+                
+                else:
+                    self.send_configure_request()
+                    self._restart_task["last-execution"] = time.time()
+        
+        with self._restart_task_lock:
+            self._restart_task["exited"] = True
 
     def _send_code_reject(
         self,
@@ -166,18 +228,21 @@ class ConfigurationProtocol(Protocol):
         identifier: int,
         data: bytes
     ) -> None:
-        def option_data_to_bytes(option_data: list[dict]) -> bytes:
+        def option_data_to_bytes(option_data: list[dict], copy: bool) -> bytes:
             result = bytearray()
 
             for option in option_data:
-                result.extend(
-                    struct.pack(
-                        ">BB",
+                if copy:
+                    data = struct.pack(
+                        "BB",
                         option["type"],
                         len(option["data"]) + 2
-                    )
-                    + option["data"]
-                )
+                    ) + option["data"]
+
+                else:
+                    data = option["option"].to_bytes(True)
+
+                result.extend(data)
 
             return bytes(result)
 
@@ -213,7 +278,10 @@ class ConfigurationProtocol(Protocol):
             result_options = ack
             self._acknowledge_remote_configuration()
         
-        data = option_data_to_bytes(result_options)
+        data = option_data_to_bytes(
+            result_options,
+            result_code == ConfigurationProtocolCode.CONFIGURE_REJECT
+        )
         self._send_lower_protocol(
             struct.pack(
                 ">BBH",
@@ -235,6 +303,9 @@ class ConfigurationProtocol(Protocol):
         
     def _check_configuration_acknowledged(self) -> None:
         if self._configure_ack_received and self._configure_ack_sent:
+            with self._restart_task_lock:
+                self._restart_task["done"] = True
+                
             self._fire_configuration_acknowledged()
     
     def _fire_configuration_acknowledged(self) -> None:
@@ -249,18 +320,43 @@ class ConfigurationProtocol(Protocol):
         if any(option["option"] is None for option in option_data):
             return
         
-        for option in option_data:
-            option["option"].on_configure_ack()
+        if all(
+            option["option"].on_configure_ack(option["data"])
+            for option in option_data
+        ):
+            self._acknowledge_local_configuration()
 
-        self._acknowledge_local_configuration()
+        else:
+            for option in option_data:
+                if not option["option"].on_configure_ack(option["data"]):
+                    pass
+
+            self.send_configure_request()
 
     def _code_handler_configure_nak(self, identifier: int, data: bytes) -> None:
         option_data = self._decode_options(data)
 
         if any(option["option"] is None for option in option_data):
             return
+        
+        if any(
+            option["option"].on_configure_nak(
+                option["data"]
+            ) for option in option_data
+        ):
+            # Terminate negociation
+            self._send_lower_protocol(
+                struct.pack(
+                    ">BBH",
+                    ConfigurationProtocolCode.TERMINATE_REQUEST.value,
+                    self._terminate_request_identifier,
+                    4
+                )
+            )
+            self._terminate_request_identifier += 1
 
-        self.send_configure_request()
+        else:
+            self.send_configure_request()
 
     def _code_handler_configure_reject(
         self,
