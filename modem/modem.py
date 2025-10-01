@@ -57,6 +57,7 @@ class Modem(Protocol):
             "I": self._command_handler_I,
             "O": self._command_handler_O,
             "Q": self._command_handler_Q,
+            "S": self._command_handler_S,
             "V": self._command_handler_V,
             "Z": self._command_handler_Z
         }
@@ -299,6 +300,41 @@ class Modem(Protocol):
         if parameter in "01":
             self._advance()
 
+    def _command_handler_S(self) -> None:
+        def is_register_number_valid(register_number: int) -> bool:
+            return register_number < len(self._s_register)
+
+        register_number = 0
+
+        while self._peek_character().isdigit():
+            register_number *= 10
+            register_number += int(self._peek_character())
+            self._advance()
+
+        if self._peek_character() == "=":
+            value = 0
+            self._advance()
+
+            while self._peek_character().isdigit():
+                value *= 10
+                value += int(self._peek_character())
+                self._advance()
+
+            if is_register_number_valid(register_number):
+                self._s_register[register_number] = value
+
+            else:
+                self._command_response = ModemReturnCode.ERROR
+
+        elif self._peek_character() == "?":
+            if is_register_number_valid(register_number):
+                self._send_lower_protocol(
+                    "{:d}\r\n".format(self._s_register[register_number])
+                )
+
+            else:
+                self._command_response = ModemReturnCode.ERROR
+        
     def _command_handler_V(self) -> None:
         parameter = self._peek_character()
         self._verbose = parameter == "1"
