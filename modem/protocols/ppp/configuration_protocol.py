@@ -73,7 +73,7 @@ class ConfigurationProtocol(Protocol):
         }
         self._options: dict[int, Option] = {}
         self._rejected_options: dict[int, Option] = {}
-        self._configuration_acknowledged_handlers = set()
+        self._configuration_acknowledged_handlers = []
         self._restart_task_lock = threading.RLock()
         self.reset()
 
@@ -143,7 +143,7 @@ class ConfigurationProtocol(Protocol):
                 self._restart_task["thread"].start()
 
     def add_configuration_acknowledged_handler(self, handler) -> None:
-        self._configuration_acknowledged_handlers.add(handler)
+        self._configuration_acknowledged_handlers.append(handler)
 
     def remove_configuration_acknowledged_handler(self, handler) -> None:
         self._configuration_acknowledged_handlers.remove(handler)

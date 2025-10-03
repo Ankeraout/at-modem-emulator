@@ -1,8 +1,5 @@
 from modem.protocols.ppp.configuration_protocol import ConfigurationProtocol, Option
 
-def bytes_to_ip(data: bytes) -> str:
-    return "{:d}.{:d}.{:d}.{:d}".format(*data)
-
 class OptionIPAddress(Option):
     def __init__(
         self,

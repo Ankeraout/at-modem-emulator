@@ -142,6 +142,7 @@ class Modem(Protocol):
         elif self._state == ModemState.DATA_PLUS2:
             if byte == ord("+"):
                 self._state = ModemState.COMMAND
+                self._send_response(ModemReturnCode.OK)
 
             else:
                 self._state = ModemState.DATA

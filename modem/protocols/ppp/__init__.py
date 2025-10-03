@@ -1,7 +1,6 @@
 from enum import Enum
 from modem.protocols.protocol import Protocol
 from modem.protocols.ppp.lcp import LCP
-from modem.protocols.ppp.ipcp import IPCP
 
 class PPPState(Enum):
     DEAD = 0
@@ -20,12 +19,10 @@ class PPP(Protocol):
         self._lcp.add_configuration_acknowledged_handler(
             self._on_lcp_configuration_acknowledged
         )
-        self._ipcp = IPCP()
-        self._ipcp.set_lower_protocol(self)
         self._protocol_handlers = {
-            0x8021: self._ipcp,
             0xc021: self._lcp
         }
+        self._state_change_handlers = list()
     
     def receive(self, buffer: bytes) -> None:
         protocol_length = 2 if (buffer[0] & 1) == 0 else 1
@@ -55,6 +52,18 @@ class PPP(Protocol):
     def begin_configuration(self) -> None:
         self._lcp.send_configure_request()
 
+    def register_protocol(self, number: int, protocol: Protocol) -> None:
+        self._protocol_handlers[number] = protocol
+
+    def register_state_change_handler(self, handler) -> None:
+        self._state_change_handlers.append(handler)
+
+    def set_state(self, new_state: PPPState) -> None:
+        previous_state = self._state
+        self._state = new_state
+
+        for handler in self._state_change_handlers:
+            handler(previous_state, new_state)
+
     def _on_lcp_configuration_acknowledged(self) -> None:
-        self._state = PPPState.NETWORK
-        self._ipcp.send_configure_request()
+        self.set_state(PPPState.NETWORK)
