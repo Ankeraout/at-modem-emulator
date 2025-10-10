@@ -21,6 +21,12 @@ class IPRoutingRule:
     
     def get_protocol(self) -> Protocol:
         return self._protocol
+    
+    def get_mask(self) -> bytes:
+        return self._mask
+    
+    def get_network(self) -> bytes:
+        return self._network
 
 class IPRouter(Protocol):
     def __init__(self) -> None:
@@ -28,12 +34,6 @@ class IPRouter(Protocol):
         self._rules: list[IPRoutingRule] = []
 
     def receive(self, buffer: bytes) -> None:
-        print(
-            "IPRouter: packet destination: {:s}".format(
-                bytes_to_ip(buffer[16:20])
-            )
-        )
-
         for rule in self._rules:
             if rule.is_applicable(buffer):
                 rule.get_protocol().send(buffer)
@@ -44,3 +44,20 @@ class IPRouter(Protocol):
 
     def register_rule(self, rule: IPRoutingRule) -> None:
         self._rules.append(rule)
+        self._rules.sort(
+            key=lambda rule: rule.get_mask(),
+            reverse=True
+        )
+
+    def remove_rule(self, network: bytes, mask: bytes) -> None:
+        found = False
+
+        for index, rule in enumerate(self._rules):
+            if rule.get_network() == network and rule.get_mask() == mask:
+                found = True
+                break
+
+        if not found:
+            raise AttributeError()
+        
+        del self._rules[index]

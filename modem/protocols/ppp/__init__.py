@@ -45,9 +45,20 @@ class PPP(Protocol):
             self._lcp.send_protocol_reject(protocol, buffer[protocol_length:])
 
     def send(self, buffer: bytes, upper_protocol: Protocol = None) -> None:
-        self._send_lower_protocol(
-            upper_protocol.get_protocol_number().to_bytes(2) + buffer
-        )
+        header = bytearray()
+        protocol_number = upper_protocol.get_protocol_number()
+
+        if (
+            self._pfc
+            and protocol_number <= 0xfe
+            and (protocol_number & 1) == 1
+        ):
+            header = protocol_number.to_bytes(1)
+
+        else:
+            header = protocol_number.to_bytes(2)
+
+        self._send_lower_protocol(header + buffer)
 
     def begin_configuration(self) -> None:
         self._lcp.send_configure_request()

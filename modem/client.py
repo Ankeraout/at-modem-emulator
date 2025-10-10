@@ -4,8 +4,9 @@ from modem.protocols.protocol import Protocol
 from modem.protocols.ppp import PPP, PPPState
 from modem.protocols.ip import IP
 from modem.protocols.ppp.ipcp import IPCP
+from modem.protocols.dhcp import DHCP
 from modem.modem import Modem
-from modem.ip_router import IPRouter
+from modem.ip_router import IPRouter, IPRoutingRule
 
 class Client:
     class _ClientSendProxy(Protocol):
@@ -22,13 +23,21 @@ class Client:
         ) -> None:
             self._client._socket.send(buffer)
 
-    def __init__(self, client_socket: socket.socket, ip_router: IPRouter):
+    def __init__(
+        self,
+        client_socket: socket.socket,
+        ip_router: IPRouter,
+        local_ip: bytes,
+        remote_ip: bytes
+    ):
         self._socket = client_socket
         self._modem = Modem()
         self._modem.set_lower_protocol(Client._ClientSendProxy(self))
         self._modem.add_dial_handler(self._on_dial)
         self._ppp = PPP()
         self._ip_router = ip_router
+        self._local_ip = local_ip
+        self._remote_ip = remote_ip
 
     def run(self) -> None:
         while True:
@@ -63,7 +72,7 @@ class Client:
         )
 
         if new_state == PPPState.NETWORK:
-            ipcp = IPCP()
+            ipcp = IPCP(self._local_ip, self._remote_ip)
             ipcp.set_lower_protocol(self._ppp)
             ipcp.add_configuration_acknowledged_handler(
                 self._on_ipcp_configuration_acknowledged
@@ -73,6 +82,9 @@ class Client:
 
     def _on_ipcp_configuration_acknowledged(self) -> None:
         ip = IP()
-        ip.set_lower_protocol(self._ip_router)
+        ip.set_lower_protocol(self._ppp)
         ip.set_upper_protocol(self._ip_router)
+        self._ip_router.register_rule(
+            IPRoutingRule(self._remote_ip, b"\xff\xff\xff\xff", ip)
+        )
         self._ppp.register_protocol(ip.get_protocol_number(), ip)

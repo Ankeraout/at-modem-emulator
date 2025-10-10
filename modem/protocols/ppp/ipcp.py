@@ -1,4 +1,5 @@
 from modem.protocols.ppp.configuration_protocol import ConfigurationProtocol, Option
+from modem.protocols.ip import IP
 
 class OptionIPAddress(Option):
     def __init__(
@@ -24,15 +25,11 @@ class OptionIPAddress(Option):
         return b"\x03\x06" + (self._remote if remote else self._local)
 
 class IPCP(ConfigurationProtocol):
-    def __init__(self) -> None:
+    def __init__(self, local: bytes, remote: bytes) -> None:
         super().__init__()
         self._options.update(
             {
-                3: OptionIPAddress(
-                    self,
-                    b"\xc0\xa8\x0a\x01",
-                    b"\xc0\xa8\x0a\x02"
-                )
+                3: OptionIPAddress(self, local, remote)
             }
         )
 

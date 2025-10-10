@@ -42,6 +42,8 @@ def main() -> int:
         client_socket, client_address = server_socket.accept()
         print("Incoming connection from {:s}.".format(str(client_address)))
 
+        client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
         while True:
             print("Connecting to the target...")
 
@@ -55,6 +57,8 @@ def main() -> int:
                 )
                 time.sleep(RETRY_DELAY)
                 continue
+
+            target_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
             print("Starting threads...")
 
