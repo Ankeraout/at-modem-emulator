@@ -207,7 +207,7 @@ class Modem(Protocol):
         if not self._quiet:
             if self._verbose:
                 self._send_lower_protocol(
-                    (response_code.value[1] + "\r\n").encode()
+                    ("\r\n" + response_code.value[1] + "\r\n").encode()
                 )
             
             else:
@@ -282,7 +282,7 @@ class Modem(Protocol):
         if parameter.isdigit():
             self._advance()
             self._send_lower_protocol(
-                "{:s}\r".format(IDENTIFICATION_CODES[int(parameter)]).encode()
+                "\r\n{:s}\r\n".format(IDENTIFICATION_CODES[int(parameter)]).encode()
             )
 
         else:
@@ -330,7 +330,7 @@ class Modem(Protocol):
         elif self._peek_character() == "?":
             if is_register_number_valid(register_number):
                 self._send_lower_protocol(
-                    "{:d}\r\n".format(self._s_register[register_number])
+                    "\r\n{:d}\r\n".format(self._s_register[register_number])
                 )
 
             else:
