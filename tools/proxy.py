@@ -1,35 +1,111 @@
+import queue
 import socket
 import threading
 import time
 
-RECEIVE_BUFFER_SIZE = 1500
-RETRY_DELAY = 10
+class Client:
+    def __init__(self, client_socket: socket.socket) -> None:
+        self._client_socket = client_socket
+        self._client_to_server_thread = (
+            threading.Thread(target=self._client_to_server_thread_main)
+        )
+        self._server_to_client_thread = (
+            threading.Thread(target=self._server_to_client_thread_main)
+        )
+        self._client_to_server_thread.start()
+        self._server_to_client_thread.start()
+        self._lock = threading.Lock()
 
-def pipe_thread(
-    source_socket: socket.socket,
-    destination_socket: socket.socket
-) -> str:
-    print("Pipe thread started.")
+    def _client_to_server_thread_main(self) -> None:
+        lock_acquired = False
 
-    while True:
+        while True:
+            try:
+                buffer = self._client_socket.recv(2000)
+
+                if len(buffer) == 0:
+                    break
+
+                self._lock.acquire()
+                lock_acquired = True
+
+                if self._server_socket is not None:
+                    self._server_socket.send(buffer)
+                
+                self._lock.release()
+                lock_acquired = False
+
+            except:
+                break
+        
+        if not lock_acquired:
+            self._lock.acquire()
+
         try:
-            buffer = source_socket.recv(RECEIVE_BUFFER_SIZE)
+            self._client_socket.close()
 
         except:
-            buffer = b""
-        
-        if len(buffer) == 0:
-            return source_socket
-        
+            pass
+
         try:
-            destination_socket.sendall(buffer)
-        
+            self._server_socket.close()
+
         except:
-            return destination_socket
+            pass
 
-def main() -> int:
-    TARGET_ADDRESS=("server", 6666)
+        self._client_socket = None
+        self._lock.release()
 
+    def _server_to_client_thread_main(self) -> None:
+        while True:
+            try:
+                server_socket = socket.create_connection(("server", 6666))
+                server_socket.setsockopt(
+                    socket.IPPROTO_TCP,
+                    socket.TCP_NODELAY,
+                    1
+                )
+
+            except:
+                time.sleep(1)
+                continue
+
+            self._lock.acquire()
+            self._server_socket = server_socket
+            self._lock.release()
+
+            lock_acquired = False
+
+            while True:
+                try:
+                    buffer = self._server_socket.recv(2000)
+
+                    if len(buffer) == 0:
+                        break
+
+                    self._lock.acquire()
+                    lock_acquired = True
+
+                    if self._client_socket is None:
+                        break
+
+                    self._client_socket.send(buffer)
+                    self._lock.release()
+                    lock_acquired = False
+
+                except:
+                    break
+
+            if not lock_acquired:
+                self._lock.acquire()
+
+            if self._client_socket is None:
+                self._lock.release()
+                break
+
+            self._lock.release()
+
+def main():
     server_socket = socket.create_server(
         ("", 6667),
         family=socket.AF_INET6,
@@ -44,40 +120,7 @@ def main() -> int:
 
         client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
-        while True:
-            print("Connecting to the target...")
-
-            try:
-                target_socket = socket.create_connection(TARGET_ADDRESS)
-
-            except:
-                print(
-                    "Failed to connect to the target. Retrying in {:d} seconds."
-                    .format(RETRY_DELAY)
-                )
-                time.sleep(RETRY_DELAY)
-                continue
-
-            target_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-
-            print("Starting threads...")
-
-            threading.Thread(
-                target=pipe_thread,
-                args=(client_socket, target_socket)
-            ).start()
-
-            closed_socket = pipe_thread(target_socket, client_socket)
-
-            if closed_socket == target_socket:
-                print("Connection lost to the target.")
-
-            else:
-                print("Connection lost to the client.")
-                target_socket.close()
-                break
-
-    return 0
+        Client(client_socket)
 
 if __name__ == "__main__":
     exit(main())

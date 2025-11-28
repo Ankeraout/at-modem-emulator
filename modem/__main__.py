@@ -5,8 +5,44 @@ from modem.client import Client
 from modem.ip_router import IPRouter, IPRoutingRule
 from modem.tun import Tun
 from modem.protocols.dhcp import DHCP
+from modem.protocols.fsk import FSK
+from modem.sample_converter import SampleConverter_U8_FLOAT, SampleConverter_FLOAT_U8
+import math
+from modem.protocols.protocol import Protocol
+import wave
+import argparse
 
-def main():
+def test():
+    class TestProtocol(Protocol):
+        def __init__(self) -> None:
+            super().__init__()
+            self._already_written = False
+
+        def receive(self, buffer: bytes) -> None:
+            print("R: {:s}".format(" ".join("{:02x}".format(x) for x in buffer)))
+    
+        def send(self, buffer: bytes, upper_protocol: "Protocol" = None) -> None:
+            if not self._already_written:
+                with wave.open("test.wav", "wb") as f:
+                    f.setframerate(8000)
+                    f.setnchannels(1)
+                    f.setnframes(len(buffer))
+                    f.setsampwidth(1)
+                    f.writeframesraw(buffer)
+                    
+                self._already_written = True
+
+    v21 = FSK(8000, 300, [1850, 1650], 1600, SampleConverter_U8_FLOAT(), SampleConverter_FLOAT_U8())
+    tp = TestProtocol()
+    v21.set_upper_protocol(tp)
+    v21.set_lower_protocol(tp)
+    v21.send(b"Hello")
+    v21.receive([])
+
+    with wave.open("test.wav", "rb") as f:
+        v21.receive(f.readframes(f.getnframes()))
+
+def main_modem():
     network = b"\xc0\xa8\x0a\x00"
     mask = b"\xff\xff\xff\x00"
     ip_router = IPRouter()
@@ -42,6 +78,11 @@ def main():
             
             except:
                 pass
+
+def main():
+    argument_parser = argparse.ArgumentParser(
+        
+    )
 
 if __name__ == "__main__":
     exit(main())

@@ -207,6 +207,9 @@ class ConfigurationProtocol(Protocol):
             option_data = data[read_index + 2:read_index + length]
             option = self._options[type] if type in self._options else None
 
+            if option is None:
+                print("{:s}: Unknown option {:d}.".format(self.__class__.__name__, type))
+
             if max_option_length < length:
                 # TODO: error case: invalid option length
                 break
